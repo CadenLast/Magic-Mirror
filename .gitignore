@@ -54,13 +54,9 @@ Temporary Items
 .directory
 .Trash-*
 
-# Ignore all modules
-/modules/*
-
-# Ignore users config file but keep the samples.
-config
-!config/config.js.sample
-!config/custom.css.sample
+# Ignore secrets and tokens
+config/config.env
+**/gmail_tokens.json
 
 # Vim
 ## swap

@@ -1,0 +1,44 @@
+<div class="pkg-wrapper">
+  {% if not loaded %}
+    <div class="dimmed small pkg-empty">Loading packages&hellip;</div>
+  {% elif hasGmail and not gmailConnected %}
+    <div class="pkg-setup">
+      <i class="fa fa-envelope-o pkg-setup-icon"></i>
+      <div class="pkg-setup-text">Gmail not connected</div>
+      <div class="pkg-setup-hint">Visit <span class="pkg-setup-url">/MMM-PackageTracking/auth</span> on this device to connect</div>
+    </div>
+  {% elif error %}
+    <div class="dimmed small pkg-empty">{{ error }}</div>
+  {% elif packages.length == 0 %}
+    <div class="dimmed small pkg-empty">No packages to track</div>
+  {% else %}
+    <div class="pkg-list">
+      {% for pkg in packages %}
+        <div class="pkg-item {{ statusClass(pkg.status) }}">
+          <div class="pkg-status-indicator">
+            <i class="fa {{ statusIcon(pkg.status) }}"></i>
+          </div>
+          <div class="pkg-details">
+            <div class="pkg-name-row">
+              <span class="pkg-name">{{ pkg.name }}</span>
+              {% if pkg.carrierName %}
+                <span class="pkg-carrier">{{ pkg.carrierName }}</span>
+              {% endif %}
+            </div>
+            {% set delivery = formatDelivery(pkg) %}
+            {% if delivery %}
+              <div class="pkg-delivery {% if pkg.status == 'OutForDelivery' %}pkg-delivery-today{% endif %}">{{ delivery }}</div>
+            {% else %}
+              <div class="pkg-status-row">
+                <span class="pkg-tag">{{ pkg.statusMessage or pkg.status }}</span>
+                {% if pkg.lastUpdate %}
+                  <span class="pkg-time">&middot; {{ timeAgo(pkg.lastUpdate) }}</span>
+                {% endif %}
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

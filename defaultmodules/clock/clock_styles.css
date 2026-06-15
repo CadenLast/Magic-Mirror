@@ -87,6 +87,10 @@
   transform-origin: 50% 100%;
 }
 
+.module.clock {
+  font-size: 120%;
+}
+
 .module.clock .digital {
   display: flex;
   flex-direction: column;

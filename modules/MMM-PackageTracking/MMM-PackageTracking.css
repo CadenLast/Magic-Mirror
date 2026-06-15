@@ -1,0 +1,171 @@
+.MMM-PackageTracking {
+  width: 400px;
+}
+
+.pkg-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.pkg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 60vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.pkg-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.pkg-status-indicator {
+  font-size: 1.3em;
+  min-width: 28px;
+  text-align: center;
+  padding-top: 2px;
+}
+
+.pkg-status-pending .pkg-status-indicator {
+  color: #95a5a6;
+}
+.pkg-status-transit .pkg-status-indicator {
+  color: #3498db;
+}
+.pkg-status-out .pkg-status-indicator {
+  color: #f39c12;
+  animation: pkg-pulse 1.5s ease-in-out infinite;
+}
+.pkg-status-delivered .pkg-status-indicator {
+  color: #2ecc71;
+}
+.pkg-status-presumed .pkg-status-indicator {
+  color: #7f8c8d;
+}
+.pkg-status-exception .pkg-status-indicator {
+  color: #e74c3c;
+}
+
+@keyframes pkg-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.pkg-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.pkg-name-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.pkg-name {
+  font-size: 0.95em;
+  color: var(--color-text-bright);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkg-carrier {
+  font-size: 0.65em;
+  color: var(--color-text);
+  opacity: 0.5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex-shrink: 0;
+}
+
+.pkg-delivery {
+  font-size: 0.82em;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pkg-delivery-today {
+  color: #f39c12;
+  font-weight: 400;
+}
+
+.pkg-status-delivered .pkg-delivery {
+  color: #2ecc71;
+}
+
+.pkg-status-presumed .pkg-delivery {
+  color: #7f8c8d;
+}
+
+.pkg-status-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8em;
+}
+
+.pkg-tag {
+  color: var(--color-text);
+}
+
+.pkg-time {
+  color: var(--color-text);
+  opacity: 0.5;
+}
+
+.pkg-empty {
+  text-align: center;
+  padding: 18px 0;
+}
+
+.pkg-item.pkg-status-delivered {
+  opacity: 0.6;
+}
+
+.pkg-item.pkg-status-presumed {
+  opacity: 0.45;
+}
+
+.pkg-setup {
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.pkg-setup-icon {
+  font-size: 2em;
+  color: var(--color-text);
+  opacity: 0.4;
+  margin-bottom: 10px;
+}
+
+.pkg-setup-text {
+  font-size: 0.9em;
+  color: var(--color-text-bright);
+  margin-bottom: 6px;
+}
+
+.pkg-setup-hint {
+  font-size: 0.7em;
+  color: var(--color-text);
+  opacity: 0.6;
+}
+
+.pkg-setup-url {
+  color: #3498db;
+}

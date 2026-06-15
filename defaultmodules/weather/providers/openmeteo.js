@@ -482,9 +482,9 @@ class OpenMeteoProvider {
 		const hours = [];
 		const now = new Date();
 
+		const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 		parsedData.hourly.forEach((weather, i) => {
-			// Skip past entries
-			if (weather.time <= now) {
+			if (weather.time <= oneHourAgo) {
 				return;
 			}
 
@@ -500,6 +500,7 @@ class OpenMeteoProvider {
 				sunrise: dailyData.sunrise,
 				sunset: dailyData.sunset,
 				temperature: parseFloat(weather.temperature_2m),
+				feelsLikeTemp: weather.apparent_temperature != null ? parseFloat(weather.apparent_temperature) : null,
 				minTemperature: parseFloat(dailyData.temperature_2m_min),
 				maxTemperature: parseFloat(dailyData.temperature_2m_max),
 				weatherType: this.#convertWeatherType(

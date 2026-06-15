@@ -1,0 +1,57 @@
+{% if loaded %}
+  <div class="week-calendar-wrapper">
+    <span class="week-nav week-nav-prev">&lsaquo;</span>
+    <div class="week-calendar">
+      {% for day in days %}
+        <div class="week-day-col {{ 'today' if day.isToday }}">
+          {% if day.weather %}
+            <div class="week-day-weather">
+              <span class="wi wi-{{ day.weather.icon }} week-weather-icon"></span>
+              <div class="week-weather-temps">
+                <span class="week-weather-high">{{ day.weather.high }}&deg;</span>
+                <span class="week-weather-low">{{ day.weather.low }}&deg;</span>
+              </div>
+              {% if day.weather.isPast %}
+                {% if day.weather.precipAmount != null %}
+                  <div class="week-weather-precip"><span class="wi wi-raindrop"></span> {{ day.weather.precipAmount }} in</div>
+                {% endif %}
+              {% else %}
+                {% if day.weather.precipChance != null %}
+                  <div class="week-weather-precip"><span class="wi wi-raindrop"></span> {{ day.weather.precipChance }}%</div>
+                {% endif %}
+              {% endif %}
+            </div>
+          {% else %}
+            <div class="week-day-weather"></div>
+          {% endif %}
+
+          <div class="week-day-header">
+            <div class="week-day-name">{{ day.name }}</div>
+            <div class="week-day-date">{{ day.date }}</div>
+          </div>
+
+          <div class="week-events-container">
+            <div class="week-day-events">
+              {% if day.events.length === 0 %}
+                <div class="week-event dimmed">&mdash;</div>
+              {% else %}
+                {% for event in day.events %}
+                  <div class="week-event" {% if event.color %}style="border-left-color: {{ event.color }}"{% endif %}>
+                    <div class="week-event-title">{{ event.title }}</div>
+                    {% if event.time %}
+                      <div class="week-event-time">{{ event.time }}</div>
+                    {% endif %}
+                  </div>
+                {% endfor %}
+              {% endif %}
+            </div>
+            <div class="week-scroll-indicator week-scroll-down">&lsaquo;</div>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+    <span class="week-nav week-nav-next">&rsaquo;</span>
+  </div>
+{% else %}
+  <div class="dimmed light small">Loading calendar...</div>
+{% endif %}

@@ -1,0 +1,142 @@
+.hourly-weather-wrapper {
+  font-size: 19px;
+  color: #fff;
+}
+
+.current-weather {
+  text-align: center;
+  margin-bottom: 19px;
+  padding-bottom: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.current-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 19px;
+  margin-bottom: 9px;
+}
+
+.current-icon {
+  font-size: 57px;
+  opacity: 0.8;
+}
+
+.current-temp {
+  font-size: 66px;
+  font-weight: 300;
+}
+
+.sun-time {
+  font-size: 22px;
+  opacity: 0.5;
+  white-space: nowrap;
+  align-self: flex-end;
+  padding-bottom: 5px;
+}
+
+.sun-time .wi {
+  margin-right: 4px;
+}
+
+.current-details {
+  display: flex;
+  justify-content: center;
+  gap: 22px;
+  font-size: 28px;
+  opacity: 0.6;
+}
+
+.current-details .wi {
+  margin-right: 5px;
+}
+
+.hourly-weather-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.hourly-weather-table th {
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.4;
+  padding: 7px 13px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.hourly-weather-table td {
+  padding: 8px 13px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.hourly-row:last-child td {
+  border-bottom: none;
+}
+
+.hourly-time {
+  opacity: 0.6;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.hourly-icon {
+  font-size: 22px;
+  opacity: 0.8;
+}
+
+.hourly-temp {
+  font-weight: bold;
+}
+
+.hourly-feels {
+  opacity: 0.5;
+}
+
+.hourly-precip {
+  opacity: 0.7;
+}
+
+.hourly-humidity {
+  opacity: 0.7;
+}
+
+.hourly-wind {
+  white-space: nowrap;
+}
+
+.hourly-wind-dir {
+  font-size: 15px;
+  opacity: 0.5;
+}
+
+.uv-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 5px;
+  font-weight: bold;
+  font-size: 18px;
+}
+
+.uv-low {
+  color: #4caf50;
+}
+
+.uv-mod {
+  color: #ffeb3b;
+}
+
+.uv-high {
+  color: #ff9800;
+}
+
+.uv-vhigh {
+  color: #f44336;
+}
+
+.uv-extreme {
+  color: #9c27b0;
+}
