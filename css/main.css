@@ -19,7 +19,7 @@
 }
 
 html {
-  cursor: auto; /* TODO: set to none when done */
+  cursor: auto;
   overflow: hidden;
   background: var(--color-background);
   user-select: none;

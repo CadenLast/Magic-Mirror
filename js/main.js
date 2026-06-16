@@ -595,6 +595,10 @@ const MM = (function () {
 			Log.info("Initializing MagicMirror².");
 			await loadConfig();
 
+			if (config.cursorStyle) {
+				document.documentElement.style.cursor = config.cursorStyle;
+			}
+
 			Log.setLogLevel(config.logLevel);
 
 			await Translator.loadCoreTranslations(config.language);
