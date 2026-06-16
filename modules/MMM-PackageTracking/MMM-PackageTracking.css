@@ -1,5 +1,6 @@
 .MMM-PackageTracking {
   width: 400px;
+  align-self: flex-end;
 }
 
 .pkg-wrapper {
@@ -11,7 +12,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 60vh;
+  max-height: 39vh;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
