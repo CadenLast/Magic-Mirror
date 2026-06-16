@@ -1,5 +1,5 @@
 :root {
-  --color-text: #999;
+  --color-text: #fff;
   --color-text-dimmed: #666;
   --color-text-bright: #fff;
   --color-background: #000;
@@ -48,7 +48,7 @@ body {
  */
 
 .dimmed {
-  color: var(--color-text-dimmed);
+  opacity: 0.6;
 }
 
 .normal {
