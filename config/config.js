@@ -121,6 +121,12 @@ let config = {
 			position: "top_left"
 		},
 		{
+			module: "MMM-Wallpaper",
+			config: {
+				rotateInterval: 60 * 60 * 1000,
+			}
+		},
+		{
 			module: "MMM-BalancedNews",
 			position: "bottom_bar",
 			config: {
