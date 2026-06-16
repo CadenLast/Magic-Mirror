@@ -63,15 +63,15 @@ let config = {
 				pastDays: 7
 			}
 		},
-		// {
-		// 	module: "weather",
-		// 	config: {
-		// 		weatherProvider: "openmeteo",
-		// 		type: "hourly",
-		// 		lat: 41.7268,
-		// 		lon: -93.6043
-		// 	}
-		// },
+		{
+			module: "weather",
+			config: {
+				weatherProvider: "openmeteo",
+				type: "hourly",
+				lat: 41.7268,
+				lon: -93.6043
+			}
+		},
 		{
 			module: "MMM-HourlyWeather",
 			position: "top_right",
@@ -80,17 +80,17 @@ let config = {
 				timeFormat: 12
 			}
 		},
-		// {
-		// 	module: "MMM-Radar",
-		// 	position: "top_left",
-		// 	config: {
-		// 		lat: 41.7268,
-		// 		lon: -93.6043,
-		// 		zoom: 6.5,
-		// 		width: "480px",
-		// 		height: "360px"
-		// 	}
-		// },
+		{
+			module: "MMM-Radar",
+			position: "top_left",
+			config: {
+				lat: 41.7268,
+				lon: -93.6043,
+				zoom: 6.5,
+				width: "480px",
+				height: "360px"
+			}
+		},
 		{
 			module: "MMM-WeekCalendar",
 			position: "bottom_bar",
