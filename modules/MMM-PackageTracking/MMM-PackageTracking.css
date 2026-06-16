@@ -12,7 +12,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  max-height: 39vh;
+  max-height: 425px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
@@ -141,6 +141,21 @@
 
 .pkg-item.pkg-status-presumed {
   opacity: 0.45;
+}
+
+.pkg-scroll-indicator {
+  text-align: center;
+  font-size: 48px;
+  color: #fff;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  transform: rotate(-90deg);
+  pointer-events: none;
+  margin-top: -20px;
+}
+
+.pkg-scroll-indicator.visible {
+  opacity: 0.4;
 }
 
 .pkg-setup {

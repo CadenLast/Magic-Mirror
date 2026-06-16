@@ -51,8 +51,19 @@ Module.register("MMM-PackageTracking", {
 	getDom () {
 		return this._super().then((dom) => {
 			const list = dom.querySelector(".pkg-list");
+			const indicator = dom.querySelector(".pkg-scroll-indicator");
 			if (list) {
-				list.addEventListener("scroll", () => document.dispatchEvent(new Event("mm-activity")));
+				const updateIndicator = () => {
+					if (!indicator) return;
+					const canScroll = list.scrollHeight > list.clientHeight;
+					const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 2;
+					indicator.classList.toggle("visible", canScroll && !atBottom);
+				};
+				list.addEventListener("scroll", () => {
+					document.dispatchEvent(new Event("mm-activity"));
+					updateIndicator();
+				});
+				updateIndicator();
 			}
 			return dom;
 		});
@@ -93,6 +104,20 @@ Module.register("MMM-PackageTracking", {
 		setInterval(() => {
 			this.sendSocketNotification("FETCH_TRACKING", {});
 		}, this.config.refreshInterval);
+	},
+
+	notificationReceived (notification) {
+		if (notification === "MODULE_DOM_UPDATED") {
+			const wrapper = document.getElementById(this.identifier);
+			if (!wrapper) return;
+			const list = wrapper.querySelector(".pkg-list");
+			const indicator = wrapper.querySelector(".pkg-scroll-indicator");
+			if (list && indicator) {
+				const canScroll = list.scrollHeight > list.clientHeight;
+				const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 2;
+				indicator.classList.toggle("visible", canScroll && !atBottom);
+			}
+		}
 	},
 
 	socketNotificationReceived (notification, payload) {
