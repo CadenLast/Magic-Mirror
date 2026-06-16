@@ -29,6 +29,7 @@ let config = {
 	resetTimeout: 5 * 60 * 1000, // In milliseconds
 	ignoreXOriginHeader: true,
 	ignoreContentSecurityPolicy: true,
+	cursorStyle: "${CURSOR_STYLE}",
 	electronOptions: {
 		x: 1728,
 		y: 0,

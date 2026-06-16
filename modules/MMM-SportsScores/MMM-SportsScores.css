@@ -227,7 +227,7 @@
 }
 
 .scores-abbr {
-  min-width: 43px;
+  flex: 1;
 }
 
 .scores-rank {
