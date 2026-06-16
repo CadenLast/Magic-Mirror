@@ -28,7 +28,11 @@ module.exports = NodeHelper.create({
 			if (top25) {
 				games = games.filter((g) => g.homeRank <= 25 || g.awayRank <= 25);
 			}
-			games.sort((a, b) => new Date(a.eventDate) - new Date(b.eventDate));
+			games.sort((a, b) =>{
+				if (a.state === "in" && b.state !== "in") return -1;
+				if (a.state !== "in" && b.state === "in") return 1;
+				return new Date(a.eventDate) - new Date(b.eventDate);
+			});
 			this.sendSocketNotification("SCORES_DATA", { games, requestId });
 		} catch (error) {
 			Log.error(`${this.name}: Error fetching scores from ${url}:`, error.message);
