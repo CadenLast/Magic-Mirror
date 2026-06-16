@@ -599,6 +599,10 @@ const MM = (function () {
 				document.documentElement.style.cursor = config.cursorStyle;
 			}
 
+			if (config.textShadow) {
+				document.body.style.textShadow = "1px 1px 4px rgba(0, 0, 0, 0.8), 0 0 10px rgba(0, 0, 0, 0.6)";
+			}
+
 			Log.setLogLevel(config.logLevel);
 
 			await Translator.loadCoreTranslations(config.language);

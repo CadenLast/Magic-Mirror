@@ -14,8 +14,11 @@
   gap: 10px;
   max-height: 425px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  scrollbar-width: none;
+}
+
+.pkg-list::-webkit-scrollbar {
+  display: none;
 }
 
 .pkg-item {
@@ -96,9 +99,6 @@
 .pkg-delivery {
   font-size: 0.82em;
   color: var(--color-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .pkg-delivery-today {
