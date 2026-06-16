@@ -72,14 +72,14 @@ let config = {
 				lon: -93.6043
 			}
 		},
-		// {
-		// 	module: "MMM-HourlyWeather",
-		// 	position: "top_right",
-		// 	config: {
-		// 		hoursToShow: 12,
-		// 		timeFormat: 12
-		// 	}
-		// },
+		{
+			module: "MMM-HourlyWeather",
+			position: "top_right",
+			config: {
+				hoursToShow: 12,
+				timeFormat: 12
+			}
+		},
 		{
 			module: "MMM-Radar",
 			position: "top_left",

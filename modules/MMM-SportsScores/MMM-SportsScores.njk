@@ -1,9 +1,9 @@
 <div class="scores-wrapper">
   {% if loaded %}
     <div class="scores-date-nav">
-      <span class="scores-chevron scores-prev{% if not canGoBack %}scores-disabled{% endif %}">&lsaquo;</span>
+      <span class="scores-chevron scores-prev {{ 'scores-disabled' if not canGoBack }}">&lsaquo;</span>
       <span class="scores-date">{% if isToday %}Today{% else %}{{ dateLabel }}{% endif %}</span>
-      <span class="scores-chevron scores-next{% if not canGoForward %}scores-disabled{% endif %}">&rsaquo;</span>
+      <span class="scores-chevron scores-next {{ 'scores-disabled' if not canGoForward }}">&rsaquo;</span>
     </div>
 
     <div class="scores-sport-menu">
@@ -13,7 +13,7 @@
       </span>
       <div class="scores-sport-dropdown">
         {% for sport in sports %}
-          <span class="scores-sport-option{% if loop.index0 == activeSportIndex %}scores-sport-option-active{% endif %}" data-index="{{ loop.index0 }}">{{ sport.icon }} {{ sport.label }}</span>
+          <span class="scores-sport-option {{ 'scores-sport-option-active' if loop.index0 == activeSportIndex }}" data-index="{{ loop.index0 }}">{{ sport.icon }} {{ sport.label }}</span>
         {% endfor %}
       </div>
     </div>
@@ -27,20 +27,20 @@
         <div class="scores-games">
           {% if favorites.length > 0 %}
             {% for game in favorites %}
-              <div class="scores-game scores-game-clickable{% if game.state == 'in' %}scores-game-live{% endif %}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
+              <div class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
                 <div class="scores-teams">
-                  <div class="scores-team-row{% if game.awayTeam.isWinner %}scores-winner{% endif %}">
+                  <div class="scores-team-row {{ 'scores-winner' if game.awayTeam.isWinner }}">
                     {% if showLogos and game.awayTeam.logo %}
                       <img class="scores-logo" src="{{ game.awayTeam.logo }}" alt="" />
                     {% endif %}
-                    <span class="scores-abbr{% if game.awayTeam.isFavorite %}scores-favorite{% endif %}">{% if game.awayTeam.rank %}<span class="scores-rank">{{ game.awayTeam.rank }}</span>{% endif %}{{ game.awayTeam.abbreviation }}</span>
+                    <span class="scores-abbr {{ 'scores-favorite' if game.awayTeam.isFavorite }}">{% if game.awayTeam.rank %}<span class="scores-rank">{{ game.awayTeam.rank }}</span>{% endif %}{{ game.awayTeam.abbreviation }}</span>
                     <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.awayTeam.score }}{% endif %}</span>
                   </div>
-                  <div class="scores-team-row{% if game.homeTeam.isWinner %}scores-winner{% endif %}">
+                  <div class="scores-team-row {{ 'scores-winner' if game.homeTeam.isWinner }}">
                     {% if showLogos and game.homeTeam.logo %}
                       <img class="scores-logo" src="{{ game.homeTeam.logo }}" alt="" />
                     {% endif %}
-                    <span class="scores-abbr{% if game.homeTeam.isFavorite %}scores-favorite{% endif %}">{% if game.homeTeam.rank %}<span class="scores-rank">{{ game.homeTeam.rank }}</span>{% endif %}{{ game.homeTeam.abbreviation }}</span>
+                    <span class="scores-abbr {{ 'scores-favorite' if game.homeTeam.isFavorite }}">{% if game.homeTeam.rank %}<span class="scores-rank">{{ game.homeTeam.rank }}</span>{% endif %}{{ game.homeTeam.abbreviation }}</span>
                     <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.homeTeam.score }}{% endif %}</span>
                   </div>
                 </div>
@@ -55,16 +55,16 @@
             {% endif %}
           {% endif %}
           {% for game in games %}
-            <div class="scores-game scores-game-clickable{% if game.state == 'in' %}scores-game-live{% endif %}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
+            <div class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
               <div class="scores-teams">
-                <div class="scores-team-row{% if game.awayTeam.isWinner %}scores-winner{% endif %}">
+                <div class="scores-team-row {{ 'scores-winner' if game.awayTeam.isWinner }}">
                   {% if showLogos and game.awayTeam.logo %}
                     <img class="scores-logo" src="{{ game.awayTeam.logo }}" alt="" />
                   {% endif %}
                   <span class="scores-abbr">{% if game.awayTeam.rank %}<span class="scores-rank">{{ game.awayTeam.rank }}</span>{% endif %}{{ game.awayTeam.abbreviation }}</span>
                   <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.awayTeam.score }}{% endif %}</span>
                 </div>
-                <div class="scores-team-row{% if game.homeTeam.isWinner %}scores-winner{% endif %}">
+                <div class="scores-team-row {{ 'scores-winner' if game.homeTeam.isWinner }}">
                   {% if showLogos and game.homeTeam.logo %}
                     <img class="scores-logo" src="{{ game.homeTeam.logo }}" alt="" />
                   {% endif %}
