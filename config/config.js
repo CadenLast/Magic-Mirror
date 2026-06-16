@@ -44,10 +44,6 @@ let config = {
 			module: "alert",
 		},
 		{
-			module: "updatenotification",
-			position: "top_bar"
-		},
-		{
 			module: "clock",
 			position: "top_left"
 		},
@@ -72,14 +68,14 @@ let config = {
 				lon: -93.6043
 			}
 		},
-		// {
-		// 	module: "MMM-HourlyWeather",
-		// 	position: "top_right",
-		// 	config: {
-		// 		hoursToShow: 12,
-		// 		timeFormat: 12
-		// 	}
-		// },
+		{
+			module: "MMM-HourlyWeather",
+			position: "top_right",
+			config: {
+				hoursToShow: 12,
+				timeFormat: 12
+			}
+		},
 		{
 			module: "MMM-Radar",
 			position: "top_left",

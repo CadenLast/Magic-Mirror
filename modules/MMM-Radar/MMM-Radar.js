@@ -92,6 +92,7 @@ Module.register("MMM-Radar", {
 			{ name: "Ankeny", lat: 41.7318, lon: -93.6001 },
 			{ name: "Des Moines", lat: 41.5868, lon: -93.6250 },
 			{ name: "Cedar Rapids", lat: 41.9779, lon: -91.6656 },
+			{ name: "Clear Lake", lat: 43.1436, lon: -93.3788 },
 			{ name: "Davenport", lat: 41.5236, lon: -90.5776 },
 			{ name: "Iowa City", lat: 41.6611, lon: -91.5302 },
 			{ name: "Sioux City", lat: 42.4963, lon: -96.4049 },
