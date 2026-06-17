@@ -1,5 +1,10 @@
 const NodeHelper = require("node_helper");
 const fs = require("fs");
+const { exec } = require("child_process");
+
+const DBUS_DEST = "org.gnome.ShairportSync";
+const DBUS_PATH = "/org/mpris/MediaPlayer2";
+const DBUS_IFACE = "org.mpris.MediaPlayer2.Player";
 
 module.exports = NodeHelper.create({
 	start: function () {
@@ -11,7 +16,59 @@ module.exports = NodeHelper.create({
 			this.config = payload;
 			this.reading = true;
 			this.startReading();
+			this.checkCurrentPlayback();
 		}
+	},
+
+	checkCurrentPlayback: function () {
+		const self = this;
+		const statusCmd = `busctl --json=short get-property ${DBUS_DEST} ${DBUS_PATH} ${DBUS_IFACE} PlaybackStatus 2>/dev/null`;
+
+		exec(statusCmd, (err, stdout) => {
+			if (err || !stdout.trim()) return;
+			try {
+				const status = JSON.parse(stdout.trim());
+				if (status.data !== "Playing") return;
+			} catch (e) {
+				return;
+			}
+
+			const metaCmd = `busctl --json=short get-property ${DBUS_DEST} ${DBUS_PATH} ${DBUS_IFACE} Metadata 2>/dev/null`;
+			exec(metaCmd, (err2, stdout2) => {
+				if (err2 || !stdout2.trim()) return;
+				try {
+					const result = JSON.parse(stdout2.trim());
+					const d = result.data;
+					const metadata = {};
+
+					if (d["xesam:title"]) metadata.title = String(d["xesam:title"].data);
+					if (d["xesam:artist"]) {
+						const artist = d["xesam:artist"].data;
+						metadata.artist = String(Array.isArray(artist) ? artist[0] : artist);
+					}
+					if (d["xesam:album"]) metadata.album = String(d["xesam:album"].data);
+
+					if (Object.keys(metadata).length > 0) {
+						self.sendSocketNotification("METADATA", metadata);
+						self.sendSocketNotification("RESUME", null);
+					}
+
+					if (d["mpris:artUrl"] && d["mpris:artUrl"].data) {
+						const artPath = String(d["mpris:artUrl"].data).replace("file://", "");
+						try {
+							const artData = fs.readFileSync(artPath);
+							let mime = "image/jpeg";
+							if (artData[0] === 0x89 && artData[1] === 0x50) mime = "image/png";
+							self.sendSocketNotification("IMAGE", "data:" + mime + ";base64," + artData.toString("base64"));
+						} catch (e) {
+							// cover art file not accessible
+						}
+					}
+				} catch (e) {
+					// DBUS metadata not available
+				}
+			});
+		});
 	},
 
 	startReading: function () {
