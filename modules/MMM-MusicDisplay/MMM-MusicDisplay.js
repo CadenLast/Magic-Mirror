@@ -132,8 +132,11 @@ Module.register("MMM-MusicDisplay", {
 			inner.dataset.bound = "1";
 			const outer = inner.parentElement;
 			if (inner.scrollWidth > outer.clientWidth) {
+				const text = inner.textContent;
+				const gap = "        ";
+				inner.textContent = text + gap + text + gap;
 				inner.classList.add("marquee-scroll");
-				inner.style.animationDuration = Math.max(inner.scrollWidth / 30, 5) + "s";
+				inner.style.animationDuration = Math.max(inner.scrollWidth / 2 / 30, 5) + "s";
 			}
 		});
 	},
