@@ -201,11 +201,8 @@ Module.register("MMM-MusicDisplay", {
 			const img = wrapper && wrapper.querySelector(".music-art");
 			if (img && this.albumArt) {
 				img.src = this.albumArt;
-			} else {
-				this.scheduleUpdate();
 			}
 		} else if (notification === "PROGRESS") {
-			const hadProgress = !!this.progress;
 			const parts = payload.split("/");
 			this.progress = {
 				start: parseInt(parts[0]),
@@ -216,17 +213,15 @@ Module.register("MMM-MusicDisplay", {
 				this.hasRealProgress = true;
 			}
 			this.playing = true;
-			if (!hadProgress) {
-				this.scheduleUpdate();
-			} else {
-				this.tickProgress();
-			}
+			this.tickProgress();
 		} else if (notification === "PAUSE") {
 			this.playing = false;
 			this.scheduleUpdate();
 		} else if (notification === "RESUME") {
-			this.playing = true;
-			this.scheduleUpdate();
+			if (!this.playing) {
+				this.playing = true;
+				this.scheduleUpdate();
+			}
 		} else if (notification === "STOP") {
 			this.playing = false;
 			this.metadata = {};
