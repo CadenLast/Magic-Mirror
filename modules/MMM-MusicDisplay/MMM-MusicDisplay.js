@@ -162,7 +162,7 @@ Module.register("MMM-MusicDisplay", {
 		label.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
 	},
 
-	scheduleUpdate: function () {
+	scheduleUpdate: function (delay) {
 		if (this._marqueeTimer) clearTimeout(this._marqueeTimer);
 		if (this._updateTimer) clearTimeout(this._updateTimer);
 		this._updateTimer = setTimeout(() => {
@@ -170,7 +170,7 @@ Module.register("MMM-MusicDisplay", {
 			this.resetRefs();
 			this.updateDom(500);
 			this._marqueeTimer = setTimeout(() => this.bindMarquees(), 1000);
-		}, 300);
+		}, delay || 300);
 	},
 
 	resetRefs: function () {
@@ -216,7 +216,7 @@ Module.register("MMM-MusicDisplay", {
 			this.tickProgress();
 		} else if (notification === "PAUSE") {
 			this.playing = false;
-			this.scheduleUpdate();
+			this.scheduleUpdate(3000);
 		} else if (notification === "RESUME") {
 			if (!this.playing) {
 				this.playing = true;
@@ -228,7 +228,7 @@ Module.register("MMM-MusicDisplay", {
 			this.albumArt = null;
 			this.progress = null;
 			this.hasRealProgress = false;
-			this.scheduleUpdate();
+			this.scheduleUpdate(3000);
 		}
 	},
 
