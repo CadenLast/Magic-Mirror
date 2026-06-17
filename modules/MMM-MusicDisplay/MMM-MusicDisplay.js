@@ -4,6 +4,7 @@ Module.register("MMM-MusicDisplay", {
 		showProgress: true,
 		showAlbumArt: true,
 		artSize: 100,
+		maxWidth: 250,
 	},
 
 	start: function () {
@@ -59,6 +60,26 @@ Module.register("MMM-MusicDisplay", {
 		}
 	},
 
+	makeMarquee: function (text, className) {
+		const outer = document.createElement("div");
+		outer.className = "marquee-container " + className;
+		outer.style.maxWidth = this.config.maxWidth + "px";
+
+		const inner = document.createElement("span");
+		inner.className = "marquee-content";
+		inner.textContent = text;
+		outer.appendChild(inner);
+
+		requestAnimationFrame(() => {
+			if (inner.scrollWidth > outer.clientWidth) {
+				inner.classList.add("marquee-scroll");
+				inner.style.animationDuration = Math.max(inner.scrollWidth / 30, 5) + "s";
+			}
+		});
+
+		return outer;
+	},
+
 	secToTime: function (sec) {
 		const min = Math.floor(sec / 60);
 		let remain = Math.floor(sec % 60);
@@ -68,7 +89,7 @@ Module.register("MMM-MusicDisplay", {
 
 	getDom: function () {
 		const wrapper = document.createElement("div");
-		wrapper.className = "shairport-wrapper";
+		wrapper.className = "music-wrapper";
 
 		const hasMetadata = this.metadata && Object.keys(this.metadata).length > 0;
 		const stale = Date.now() - this.lastUpdate > 120000;
@@ -84,7 +105,7 @@ Module.register("MMM-MusicDisplay", {
 
 		if (this.config.showAlbumArt && this.albumArt) {
 			const img = document.createElement("img");
-			img.className = "shairport-art";
+			img.className = "music-art";
 			img.src = this.albumArt;
 			img.width = this.config.artSize;
 			img.height = this.config.artSize;
@@ -92,23 +113,18 @@ Module.register("MMM-MusicDisplay", {
 		}
 
 		const info = document.createElement("div");
-		info.className = "shairport-info";
+		info.className = "music-info";
 
 		if (this.metadata.title) {
-			const title = document.createElement("div");
-			title.className = "shairport-title bright medium";
-			title.textContent = this.metadata.title;
-			info.appendChild(title);
+			info.appendChild(this.makeMarquee(this.metadata.title, "music-title bright medium"));
 		}
 
-		const subtitle = [this.metadata.artist, this.metadata.album]
-			.filter(Boolean)
-			.join(" — ");
-		if (subtitle) {
-			const sub = document.createElement("div");
-			sub.className = "shairport-subtitle small dimmed";
-			sub.textContent = subtitle;
-			info.appendChild(sub);
+		if (this.metadata.artist) {
+			info.appendChild(this.makeMarquee(this.metadata.artist, "music-artist small dimmed"));
+		}
+
+		if (this.metadata.album) {
+			info.appendChild(this.makeMarquee(this.metadata.album, "music-album small dimmed"));
 		}
 
 		if (this.config.showProgress && this.progress) {
@@ -121,20 +137,20 @@ Module.register("MMM-MusicDisplay", {
 			if (elapsed < 0) elapsed = 0;
 
 			const bar = document.createElement("progress");
-			bar.className = "shairport-progress";
+			bar.className = "music-progress";
 			bar.value = elapsed;
 			bar.max = duration;
 			info.appendChild(bar);
 
 			const time = document.createElement("div");
-			time.className = "shairport-time xsmall dimmed";
+			time.className = "music-time xsmall dimmed";
 			time.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
 			info.appendChild(time);
 		}
 
 		if (!this.playing && hasMetadata) {
 			const paused = document.createElement("div");
-			paused.className = "shairport-paused xsmall dimmed";
+			paused.className = "music-paused xsmall dimmed";
 			paused.textContent = "Paused";
 			info.appendChild(paused);
 		}

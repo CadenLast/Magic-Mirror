@@ -3,13 +3,11 @@ const fs = require("fs");
 
 module.exports = NodeHelper.create({
 	start: function () {
-		console.log("[MMM-MusicDisplay] node_helper started");
 		this.reading = false;
 	},
 
 	socketNotificationReceived: function (notification, payload) {
 		if (notification === "CONFIG" && !this.reading) {
-			console.log("[MMM-MusicDisplay] Got CONFIG, pipe:", payload.metadataPipe);
 			this.config = payload;
 			this.reading = true;
 			this.startReading();
@@ -26,22 +24,15 @@ module.exports = NodeHelper.create({
 		let metadata = {};
 
 		const openPipe = () => {
-			console.log("[MMM-MusicDisplay] Opening pipe:", pipePath);
 			let stream;
 			try {
 				stream = fs.createReadStream(pipePath, { encoding: "utf8" });
 			} catch (err) {
-				console.error("[MMM-MusicDisplay] Failed to open pipe:", err.message);
 				setTimeout(openPipe, 5000);
 				return;
 			}
 
-			stream.on("open", () => {
-				console.log("[MMM-MusicDisplay] Pipe opened successfully");
-			});
-
 			stream.on("data", (chunk) => {
-				console.log("[MMM-MusicDisplay] Received", chunk.length, "bytes from pipe");
 				buffer += chunk;
 				const lines = buffer.split("\n");
 				buffer = lines.pop();
@@ -84,8 +75,7 @@ module.exports = NodeHelper.create({
 				}
 			});
 
-			stream.on("error", (err) => {
-				console.error(self.name + ": pipe error:", err.message);
+			stream.on("error", () => {
 				setTimeout(openPipe, 5000);
 			});
 
@@ -98,7 +88,6 @@ module.exports = NodeHelper.create({
 	},
 
 	handleItem: function (type, code, data, metadata) {
-		console.log("[MMM-MusicDisplay] Item:", type, code, "length:", data.length);
 		if (type === "core") {
 			if (code === "minm") {
 				metadata.title = data.toString("utf8");

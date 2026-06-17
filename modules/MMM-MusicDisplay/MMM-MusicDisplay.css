@@ -1,39 +1,51 @@
-.shairport-wrapper {
+.music-wrapper {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-.shairport-wrapper.hidden {
+.music-wrapper.hidden {
   display: none;
 }
 
-.shairport-art {
+.music-art {
   border-radius: 6px;
   object-fit: cover;
+  flex-shrink: 0;
 }
 
-.shairport-info {
+.music-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.shairport-title {
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 250px;
 }
 
-.shairport-subtitle {
-  white-space: nowrap;
+.marquee-container {
   overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 250px;
+  white-space: nowrap;
 }
 
-.shairport-progress {
+.marquee-content {
+  display: inline-block;
+  padding-right: 0;
+}
+
+.marquee-scroll {
+  animation: marquee-scroll linear infinite;
+  padding-right: 50px;
+}
+
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.music-progress {
   -webkit-appearance: none;
   appearance: none;
   width: 180px;
@@ -43,21 +55,21 @@
   margin-top: 4px;
 }
 
-.shairport-progress::-webkit-progress-bar {
+.music-progress::-webkit-progress-bar {
   background-color: rgba(255, 255, 255, 0.15);
   border-radius: 2px;
 }
 
-.shairport-progress::-webkit-progress-value {
+.music-progress::-webkit-progress-value {
   background-color: rgba(255, 255, 255, 0.8);
   border-radius: 2px;
 }
 
-.shairport-time {
+.music-time {
   margin-top: 1px;
 }
 
-.shairport-paused {
+.music-paused {
   font-style: italic;
   margin-top: 2px;
 }
