@@ -1,7 +1,11 @@
+.MMM-MusicDisplay {
+  min-width: 336px;
+}
+
 .music-wrapper {
   display: flex;
   flex-direction: column;
-  width: 336px;
+  width: 100%;
   gap: 8px;
 }
 
