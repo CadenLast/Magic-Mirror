@@ -3,8 +3,7 @@ Module.register("MMM-MusicDisplay", {
 		metadataPipe: "/tmp/shairport-sync-metadata",
 		showProgress: true,
 		showAlbumArt: true,
-		artSize: 100,
-		maxWidth: 250,
+		artSize: 120,
 	},
 
 	start: function () {
@@ -81,7 +80,6 @@ Module.register("MMM-MusicDisplay", {
 	makeMarquee: function (text, className) {
 		const outer = document.createElement("div");
 		outer.className = "marquee-container " + className;
-		outer.style.maxWidth = this.config.maxWidth + "px";
 
 		const inner = document.createElement("span");
 		inner.className = "marquee-content";
@@ -121,13 +119,16 @@ Module.register("MMM-MusicDisplay", {
 			return wrapper;
 		}
 
+		const top = document.createElement("div");
+		top.className = "music-top";
+
 		if (this.config.showAlbumArt && this.albumArt) {
 			const img = document.createElement("img");
 			img.className = "music-art";
 			img.src = this.albumArt;
 			img.width = this.config.artSize;
 			img.height = this.config.artSize;
-			wrapper.appendChild(img);
+			top.appendChild(img);
 		}
 
 		const info = document.createElement("div");
@@ -145,23 +146,6 @@ Module.register("MMM-MusicDisplay", {
 			info.appendChild(this.makeMarquee(this.metadata.album, "music-album small dimmed"));
 		}
 
-		if (this.config.showProgress && this.progress) {
-			const bar = document.createElement("progress");
-			bar.className = "music-progress";
-			this.progressBar = bar;
-			info.appendChild(bar);
-
-			const time = document.createElement("div");
-			time.className = "music-time xsmall dimmed";
-			this.progressLabel = time;
-			info.appendChild(time);
-
-			this.tickProgress();
-		} else {
-			this.progressBar = null;
-			this.progressLabel = null;
-		}
-
 		if (!this.playing && hasMetadata) {
 			const paused = document.createElement("div");
 			paused.className = "music-paused xsmall dimmed";
@@ -169,7 +153,30 @@ Module.register("MMM-MusicDisplay", {
 			info.appendChild(paused);
 		}
 
-		wrapper.appendChild(info);
+		top.appendChild(info);
+		wrapper.appendChild(top);
+
+		if (this.config.showProgress && this.progress) {
+			const bottom = document.createElement("div");
+			bottom.className = "music-bottom";
+
+			const bar = document.createElement("progress");
+			bar.className = "music-progress";
+			this.progressBar = bar;
+			bottom.appendChild(bar);
+
+			const time = document.createElement("div");
+			time.className = "music-time xsmall dimmed";
+			this.progressLabel = time;
+			bottom.appendChild(time);
+
+			this.tickProgress();
+			wrapper.appendChild(bottom);
+		} else {
+			this.progressBar = null;
+			this.progressLabel = null;
+		}
+
 		return wrapper;
 	},
 });
