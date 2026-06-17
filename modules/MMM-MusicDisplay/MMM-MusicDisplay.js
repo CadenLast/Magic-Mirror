@@ -17,7 +17,14 @@ Module.register("MMM-MusicDisplay", {
 		this.progressBar = null;
 		this.progressLabel = null;
 		this.recentTracks = [];
-		this.currentTrackIndex = 0;
+		this.carouselAngle = 0;
+		this.carouselRing = null;
+		this.carouselCards = [];
+		this.carouselInfo = null;
+		this.carouselFrontIndex = -1;
+		this.dragging = false;
+		this.dragVelocity = 0;
+		this.dragIdleTime = 0;
 		this.sendSocketNotification("CONFIG", this.config);
 
 		setInterval(() => {
@@ -28,17 +35,119 @@ Module.register("MMM-MusicDisplay", {
 		}, 1000);
 
 		setInterval(() => {
-			if (!this.playing && this.recentTracks.length > 1) {
-				this.rotateToNext();
+			if (this.playing || this.recentTracks.length <= 1) return;
+
+			if (!this.carouselRing) {
+				this.bindCarousel();
+				if (!this.carouselRing) return;
 			}
-		}, this.config.rotationSpeed);
+
+			if (this.dragging) return;
+
+			if (Math.abs(this.dragVelocity) > 0.05) {
+				this.carouselAngle = (this.carouselAngle + this.dragVelocity + 360) % 360;
+				this.dragVelocity *= 0.95;
+				this.updateCarousel();
+			} else {
+				this.dragVelocity = 0;
+				this.dragIdleTime += 50;
+				if (this.dragIdleTime > 3000) {
+					const n = this.recentTracks.length;
+					this.carouselAngle = (this.carouselAngle + 18000 / (this.config.rotationSpeed * n)) % 360;
+					this.updateCarousel();
+				}
+			}
+		}, 50);
 	},
 
 	getStyles: function () {
 		return ["MMM-MusicDisplay.css"];
 	},
 
+	getTemplate: function () {
+		return "MMM-MusicDisplay.njk";
+	},
+
+	getTemplateData: function () {
+		const hasMetadata = this.metadata && Object.keys(this.metadata).length > 0;
+		const stale = Date.now() - this.lastUpdate > 120000;
+		const isLive = this.playing || (hasMetadata && !stale);
+
+		let mode = "hidden";
+		if (isLive) {
+			mode = "live";
+			this.data.header = "Now Playing";
+		} else if (this.recentTracks.length > 0) {
+			mode = "carousel";
+			this.data.header = "Recently Played";
+		}
+
+		const n = this.recentTracks.length;
+		const angleStep = n > 0 ? 360 / n : 0;
+
+		return {
+			mode: mode,
+			metadata: this.metadata,
+			albumArt: this.albumArt,
+			artSize: this.config.artSize,
+			showAlbumArt: this.config.showAlbumArt,
+			showProgress: this.config.showProgress,
+			hasProgress: !!this.progress,
+			playing: this.playing,
+			radius: 250,
+			tracks: this.recentTracks.map(function (t, i) {
+				return {
+					image: t.image || "",
+					album: t.album || "",
+					artist: t.artist || "",
+					angle: i * angleStep,
+				};
+			}),
+		};
+	},
+
+	bindCarousel: function () {
+		const wrapper = document.querySelector(".MMM-MusicDisplay");
+		if (!wrapper) return;
+		const ring = wrapper.querySelector(".carousel-ring");
+		if (!ring) return;
+
+		this.carouselRing = ring;
+		this.carouselCards = [];
+		wrapper.querySelectorAll(".carousel-card").forEach((el) => {
+			this.carouselCards.push({
+				el: el,
+				baseAngle: parseFloat(el.dataset.angle),
+			});
+		});
+		this.carouselInfo = wrapper.querySelector(".carousel-info");
+		this.carouselFrontIndex = -1;
+		this.updateCarousel();
+		this.attachDragListeners(wrapper.querySelector(".carousel-scene"));
+	},
+
+	bindMarquees: function () {
+		const wrapper = document.querySelector(".MMM-MusicDisplay");
+		if (!wrapper) return;
+		wrapper.querySelectorAll(".marquee-content").forEach((inner) => {
+			if (inner.dataset.bound) return;
+			inner.dataset.bound = "1";
+			const outer = inner.parentElement;
+			if (inner.scrollWidth > outer.clientWidth) {
+				inner.classList.add("marquee-scroll");
+				inner.style.animationDuration = Math.max(inner.scrollWidth / 30, 5) + "s";
+			}
+		});
+	},
+
 	tickProgress: function () {
+		if (!this.progressBar || !this.progressLabel) {
+			const wrapper = document.querySelector(".MMM-MusicDisplay");
+			if (wrapper) {
+				this.progressBar = wrapper.querySelector(".music-progress");
+				this.progressLabel = wrapper.querySelector(".music-time");
+			}
+		}
 		if (!this.progressBar || !this.progressLabel || !this.progress) return;
 		const start = this.progress.start / 44100;
 		const current = this.progress.current / 44100;
@@ -53,69 +162,24 @@ Module.register("MMM-MusicDisplay", {
 		this.progressLabel.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
 	},
 
-	rotateToNext: function () {
-		const card = document.querySelector(".music-recent-card");
-		if (!card || card.classList.contains("rack-out") || card.classList.contains("rack-in")) return;
-
-		card.classList.add("rack-out");
-		card.addEventListener(
-			"animationend",
-			() => {
-				card.classList.remove("rack-out");
-				this.currentTrackIndex = (this.currentTrackIndex + 1) % this.recentTracks.length;
-
-				while (card.firstChild) card.removeChild(card.firstChild);
-				this.populateCard(card, this.recentTracks[this.currentTrackIndex]);
-
-				card.classList.add("rack-in");
-				card.addEventListener(
-					"animationend",
-					() => {
-						card.classList.remove("rack-in");
-					},
-					{ once: true }
-				);
-			},
-			{ once: true }
-		);
-	},
-
-	populateCard: function (card, track) {
-		const top = document.createElement("div");
-		top.className = "music-top";
-
-		if (track.image) {
-			const img = document.createElement("img");
-			img.className = "music-art";
-			img.src = track.image;
-			img.width = this.config.artSize;
-			img.height = this.config.artSize;
-			top.appendChild(img);
-		}
-
-		const info = document.createElement("div");
-		info.className = "music-info";
-
-		if (track.title) {
-			info.appendChild(this.makeMarquee(track.title, "music-title bright medium"));
-		}
-		if (track.artist) {
-			info.appendChild(this.makeMarquee(track.artist, "music-artist small dimmed"));
-		}
-		if (track.album) {
-			info.appendChild(this.makeMarquee(track.album, "music-album small dimmed"));
-		}
-
-		top.appendChild(info);
-		card.appendChild(top);
+	//TODO connect to api to get recently listened to tracks ( Apple Music doesnt do it :( )
+	//currently using favorites list in config
+	resetRefs: function () {
+		this.carouselRing = null;
+		this.carouselCards = [];
+		this.carouselInfo = null;
+		this.carouselFrontIndex = -1;
+		this.progressBar = null;
+		this.progressLabel = null;
 	},
 
 	socketNotificationReceived: function (notification, payload) {
 		if (notification === "RECENT_TRACKS") {
 			this.recentTracks = payload;
-			this.currentTrackIndex = 0;
 			if (!this.playing) {
+				this.resetRefs();
 				this.updateDom(500);
+				setTimeout(() => this.bindMarquees(), 600);
 			}
 			return;
 		}
@@ -125,7 +189,9 @@ Module.register("MMM-MusicDisplay", {
 		if (notification === "METADATA") {
 			this.metadata = payload;
 			this.playing = true;
+			this.resetRefs();
 			this.updateDom(500);
+			setTimeout(() => this.bindMarquees(), 600);
 		} else if (notification === "IMAGE") {
 			this.albumArt = payload || null;
 			this.updateDom(500);
@@ -140,37 +206,21 @@ Module.register("MMM-MusicDisplay", {
 			this.tickProgress();
 		} else if (notification === "PAUSE") {
 			this.playing = false;
+			this.resetRefs();
 			this.updateDom(500);
 		} else if (notification === "RESUME") {
 			this.playing = true;
+			this.resetRefs();
 			this.updateDom(500);
+			setTimeout(() => this.bindMarquees(), 600);
 		} else if (notification === "STOP") {
 			this.playing = false;
 			this.metadata = {};
 			this.albumArt = null;
 			this.progress = null;
-			this.currentTrackIndex = 0;
+			this.resetRefs();
 			this.updateDom(500);
 		}
-	},
-
-	makeMarquee: function (text, className) {
-		const outer = document.createElement("div");
-		outer.className = "marquee-container " + className;
-
-		const inner = document.createElement("span");
-		inner.className = "marquee-content";
-		inner.textContent = text;
-		outer.appendChild(inner);
-
-		requestAnimationFrame(() => {
-			if (inner.scrollWidth > outer.clientWidth) {
-				inner.classList.add("marquee-scroll");
-				inner.style.animationDuration = Math.max(inner.scrollWidth / 30, 5) + "s";
-			}
-		});
-
-		return outer;
 	},
 
 	secToTime: function (sec) {
@@ -180,97 +230,109 @@ Module.register("MMM-MusicDisplay", {
 		return min + ":" + remain;
 	},
 
-	getDom: function () {
-		const wrapper = document.createElement("div");
-		wrapper.className = "music-wrapper";
+	attachDragListeners: function (scene) {
+		if (!scene) return;
+		let lastX = 0;
+		let lastTime = 0;
 
-		const hasMetadata = this.metadata && Object.keys(this.metadata).length > 0;
-		const stale = Date.now() - this.lastUpdate > 120000;
+		const onStart = (x) => {
+			this.dragging = true;
+			this.dragVelocity = 0;
+			this.dragIdleTime = 0;
+			lastX = x;
+			lastTime = Date.now();
+		};
 
-		if (this.playing || (hasMetadata && !stale)) {
-			this.data.header = "Now Playing";
-			return this.buildLiveView(wrapper);
-		}
+		const onMove = (x) => {
+			if (!this.dragging) return;
+			const dx = x - lastX;
+			const now = Date.now();
+			const dt = Math.max(now - lastTime, 1);
+			lastX = x;
+			lastTime = now;
+			const angleDelta = -dx * 0.3;
+			this.carouselAngle = (this.carouselAngle + angleDelta + 360) % 360;
+			const newVelocity = angleDelta / Math.max(dt / 50, 0.2);
+			this.dragVelocity = this.dragVelocity * 0.5 + newVelocity * 0.5;
+			this.updateCarousel();
+		};
 
-		if (this.recentTracks.length > 0) {
-			this.data.header = "Recently Played";
-			return this.buildRecentView(wrapper);
-		}
+		const onEnd = () => {
+			this.dragging = false;
+			this.dragIdleTime = 0;
+		};
 
-		wrapper.classList.add("hidden");
-		return wrapper;
+		scene.addEventListener("mousedown", (e) => {
+			onStart(e.clientX);
+			e.preventDefault();
+			const move = (ev) => onMove(ev.clientX);
+			const up = () => {
+				onEnd();
+				document.removeEventListener("mousemove", move);
+				document.removeEventListener("mouseup", up);
+			};
+			document.addEventListener("mousemove", move);
+			document.addEventListener("mouseup", up);
+		});
+
+		scene.addEventListener("touchstart", (e) => {
+			onStart(e.touches[0].clientX);
+			const move = (ev) => {
+				onMove(ev.touches[0].clientX);
+				ev.preventDefault();
+			};
+			const end = () => {
+				onEnd();
+				document.removeEventListener("touchmove", move);
+				document.removeEventListener("touchend", end);
+			};
+			document.addEventListener("touchmove", move, { passive: false });
+			document.addEventListener("touchend", end);
+		}, { passive: true });
 	},
 
-	buildLiveView: function (wrapper) {
-		const top = document.createElement("div");
-		top.className = "music-top";
+	updateCarousel: function () {
+		if (!this.carouselRing) return;
+		this.carouselRing.style.transform = "rotateY(" + this.carouselAngle + "deg)";
 
-		if (this.config.showAlbumArt && this.albumArt) {
-			const img = document.createElement("img");
-			img.className = "music-art";
-			img.src = this.albumArt;
-			img.width = this.config.artSize;
-			img.height = this.config.artSize;
-			top.appendChild(img);
+		let frontIndex = 0;
+		let minAngle = 360;
+
+		this.carouselCards.forEach((card, i) => {
+			let effective = (card.baseAngle + this.carouselAngle) % 360;
+			if (effective > 180) effective = 360 - effective;
+
+			let opacity;
+			if (effective <= 30) opacity = 1;
+			else if (effective <= 100) opacity = 1 - (effective - 30) / 70;
+			else opacity = 0;
+
+			card.el.style.opacity = opacity;
+
+			if (effective < minAngle) {
+				minAngle = effective;
+				frontIndex = i;
+			}
+		});
+
+		if (frontIndex !== this.carouselFrontIndex && this.carouselInfo) {
+			this.carouselFrontIndex = frontIndex;
+			const track = this.recentTracks[frontIndex];
+			if (track) {
+				this.carouselInfo.innerHTML = "";
+				if (track.album) {
+					const albumEl = document.createElement("div");
+					albumEl.className = "carousel-album bright small";
+					albumEl.textContent = track.album;
+					this.carouselInfo.appendChild(albumEl);
+				}
+				if (track.artist) {
+					const artistEl = document.createElement("div");
+					artistEl.className = "carousel-artist xsmall dimmed";
+					artistEl.textContent = track.artist;
+					this.carouselInfo.appendChild(artistEl);
+				}
+			}
 		}
-
-		const info = document.createElement("div");
-		info.className = "music-info";
-
-		if (this.metadata.title) {
-			info.appendChild(this.makeMarquee(this.metadata.title, "music-title bright medium"));
-		}
-		if (this.metadata.artist) {
-			info.appendChild(this.makeMarquee(this.metadata.artist, "music-artist small dimmed"));
-		}
-		if (this.metadata.album) {
-			info.appendChild(this.makeMarquee(this.metadata.album, "music-album small dimmed"));
-		}
-
-		if (!this.playing) {
-			const paused = document.createElement("div");
-			paused.className = "music-paused xsmall dimmed";
-			paused.textContent = "Paused";
-			info.appendChild(paused);
-		}
-
-		top.appendChild(info);
-		wrapper.appendChild(top);
-
-		if (this.config.showProgress && this.progress) {
-			const bottom = document.createElement("div");
-			bottom.className = "music-bottom";
-
-			const bar = document.createElement("progress");
-			bar.className = "music-progress";
-			this.progressBar = bar;
-			bottom.appendChild(bar);
-
-			const time = document.createElement("div");
-			time.className = "music-time xsmall dimmed";
-			this.progressLabel = time;
-			bottom.appendChild(time);
-
-			this.tickProgress();
-			wrapper.appendChild(bottom);
-		} else {
-			this.progressBar = null;
-			this.progressLabel = null;
-		}
-
-		return wrapper;
-	},
-
-	buildRecentView: function (wrapper) {
-		const container = document.createElement("div");
-		container.className = "music-recent-container";
-
-		const card = document.createElement("div");
-		card.className = "music-recent-card";
-		this.populateCard(card, this.recentTracks[this.currentTrackIndex]);
-
-		container.appendChild(card);
-		wrapper.appendChild(container);
-		return wrapper;
 	},
 });

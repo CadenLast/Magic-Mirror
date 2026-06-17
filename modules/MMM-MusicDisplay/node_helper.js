@@ -9,6 +9,14 @@ const DBUS_PATH = "/org/mpris/MediaPlayer2";
 const DBUS_IFACE = "org.mpris.MediaPlayer2.Player";
 const ART_CACHE_FILE = path.join(__dirname, "art_cache.json");
 
+let httpsAgent = null;
+try {
+	const caPath = path.join(require("os").homedir(), ".netskope-ca.pem");
+	const extra = fs.readFileSync(caPath, "utf8");
+	const tls = require("tls");
+	httpsAgent = new https.Agent({ ca: [...tls.rootCertificates, extra] });
+} catch (e) { /* no proxy cert */ }
+
 module.exports = NodeHelper.create({
 	start: function () {
 		this.reading = false;
@@ -45,66 +53,115 @@ module.exports = NodeHelper.create({
 		const favorites = this.config.favorites || [];
 		if (favorites.length === 0) return;
 
-		let pending = favorites.length;
-		const results = [];
+		const tracks = favorites.map((fav) => ({
+			title: fav.title || "",
+			artist: fav.artist || "",
+			album: fav.album || "",
+			image: this.artCache[fav.artist + " - " + fav.album] || "",
+		}));
 
+		this.sendSocketNotification("RECENT_TRACKS", tracks);
+
+		const uncached = [];
 		favorites.forEach((fav, i) => {
 			const cacheKey = fav.artist + " - " + fav.album;
-
-			const finish = (image) => {
-				results[i] = {
-					title: fav.title || "",
-					artist: fav.artist || "",
-					album: fav.album || "",
-					image: image || "",
-				};
-				pending--;
-				if (pending === 0) {
-					this.sendSocketNotification(
-						"RECENT_TRACKS",
-						results.filter((r) => r)
-					);
-				}
-			};
-
-			if (this.artCache[cacheKey]) {
-				finish(this.artCache[cacheKey]);
-			} else {
-				this.lookupArtwork(fav.artist, fav.album, (url) => {
-					if (url) {
-						this.artCache[cacheKey] = url;
-						this.saveArtCache();
-					}
-					finish(url);
-				});
+			if (!this.artCache[cacheKey]) {
+				uncached.push({ fav, index: i, cacheKey });
 			}
 		});
+
+		if (uncached.length === 0) return;
+
+		let qi = 0;
+		const fetchNext = () => {
+			if (qi >= uncached.length) return;
+			const { fav, index, cacheKey } = uncached[qi++];
+			this.lookupArtwork(fav.artist, fav.album, (url) => {
+				if (url) {
+					this.artCache[cacheKey] = url;
+					this.saveArtCache();
+					tracks[index].image = url;
+					this.sendSocketNotification("RECENT_TRACKS", tracks);
+				}
+				setTimeout(fetchNext, 1100);
+			});
+		};
+
+		fetchNext();
 	},
 
 	lookupArtwork: function (artist, album, callback) {
-		const query = encodeURIComponent(artist + " " + album);
-		const url = "https://itunes.apple.com/search?term=" + query + "&entity=album&limit=1";
+		this.lookupMusicBrainz(artist, album, callback);
+	},
 
-		https
-			.get(url, (res) => {
-				let body = "";
-				res.on("data", (chunk) => {
-					body += chunk;
-				});
-				res.on("end", () => {
-					try {
-						const json = JSON.parse(body);
-						if (json.results && json.results.length > 0 && json.results[0].artworkUrl100) {
-							callback(json.results[0].artworkUrl100.replace("100x100bb", "600x600bb"));
-						} else {
-							callback("");
-						}
-					} catch (e) {
-						callback("");
-					}
-				});
-			})
-			.on("error", () => callback(""));
+	timedGet: function (url, opts, callback) {
+		if (httpsAgent) opts.agent = httpsAgent;
+		const req = https.get(url, opts, callback);
+		req.setTimeout(8000, () => {
+			req.destroy();
+		});
+		return req;
+	},
+
+	lookupMusicBrainz: function (artist, album, callback) {
+		const query = encodeURIComponent("artist:" + artist + " AND releasegroup:" + album);
+		const url = "https://musicbrainz.org/ws/2/release-group/?query=" + query + "&type=album&fmt=json&limit=1";
+		const opts = { headers: { "User-Agent": "MagicMirror-MusicDisplay/1.0 (mirror)" } };
+
+		this.timedGet(url, opts, (res) => {
+			let body = "";
+			res.on("data", (chunk) => {
+				body += chunk;
+			});
+			res.on("end", () => {
+				try {
+					const json = JSON.parse(body);
+					const rg = json["release-groups"] && json["release-groups"][0];
+					if (!rg) return callback("");
+					this.fetchCoverArt(rg.id, callback);
+				} catch (e) {
+					callback("");
+				}
+			});
+		}).on("error", () => callback(""));
+	},
+
+	fetchCoverArt: function (releaseGroupId, callback) {
+		const url = "https://coverartarchive.org/release-group/" + releaseGroupId;
+		const opts = { headers: { "User-Agent": "MagicMirror-MusicDisplay/1.0 (mirror)" } };
+
+		this.timedGet(url, opts, (res) => {
+			if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+				this.timedGet(res.headers.location, opts, (res2) => {
+					this.parseCoverArtResponse(res2, callback);
+				}).on("error", () => callback(""));
+				res.resume();
+				return;
+			}
+			this.parseCoverArtResponse(res, callback);
+		}).on("error", () => callback(""));
+	},
+
+	parseCoverArtResponse: function (res, callback) {
+		let body = "";
+		res.on("data", (chunk) => {
+			body += chunk;
+		});
+		res.on("end", () => {
+			try {
+				const json = JSON.parse(body);
+				const front = json.images && json.images.find((img) => img.front);
+				if (front && front.thumbnails && front.thumbnails["500"]) {
+					callback(front.thumbnails["500"]);
+				} else if (front && front.image) {
+					callback(front.image);
+				} else {
+					callback("");
+				}
+			} catch (e) {
+				callback("");
+			}
+		});
 	},
 
 	checkCurrentPlayback: function () {

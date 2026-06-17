@@ -11,17 +11,7 @@ Module.register("MMM-SportsScores", {
 			{ label: "NCAAB Top 25", icon: "🏀", sport: "basketball", league: "mens-college-basketball", top25: true },
 			{ label: "NCAAB", icon: "🏀", sport: "basketball", league: "mens-college-basketball" }
 		],
-		favoriteTeams: [
-			{ team: "Bears", sport: "football", league: "nfl" },
-			{ team: "Bulls", sport: "basketball", league: "nba" },
-			{ team: "Cubs", sport: "baseball", league: "mlb" },
-			{ team: "Iowa State", sport: "football", league: "college-football" },
-			{ team: "Hawkeyes", sport: "football", league: "college-football" },
-			{ team: "Hawkeyes", sport: "basketball", league: "mens-college-basketball" },
-			{ team: "Iowa State", sport: "basketball", league: "mens-college-basketball" },
-			{ team: "Drake", sport: "basketball", league: "mens-college-basketball" },
-			{ team: "Northern Iowa", sport: "basketball", league: "mens-college-basketball" }
-		],
+		favoriteTeams: [],
 		refreshInterval: 60 * 1000,
 		animationSpeed: 500,
 		maxDaysAhead: 7,
