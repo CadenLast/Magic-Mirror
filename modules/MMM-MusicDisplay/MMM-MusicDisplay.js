@@ -13,18 +13,35 @@ Module.register("MMM-MusicDisplay", {
 		this.progress = null;
 		this.playing = false;
 		this.lastUpdate = 0;
+		this.progressBar = null;
+		this.progressLabel = null;
 		this.sendSocketNotification("CONFIG", this.config);
 
 		setInterval(() => {
 			if (this.playing && this.progress) {
 				this.progress.current += 44100;
-				this.updateDom(0);
+				this.tickProgress();
 			}
 		}, 1000);
 	},
 
 	getStyles: function () {
 		return ["MMM-MusicDisplay.css"];
+	},
+
+	tickProgress: function () {
+		if (!this.progressBar || !this.progressLabel || !this.progress) return;
+		const start = this.progress.start / 44100;
+		const current = this.progress.current / 44100;
+		const end = this.progress.end / 44100;
+		let elapsed = current - start;
+		const duration = end - start;
+		if (elapsed > duration) elapsed = duration;
+		if (elapsed < 0) elapsed = 0;
+
+		this.progressBar.value = elapsed;
+		this.progressBar.max = duration;
+		this.progressLabel.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
 	},
 
 	socketNotificationReceived: function (notification, payload) {
@@ -45,6 +62,7 @@ Module.register("MMM-MusicDisplay", {
 				end: parseInt(parts[2]),
 			};
 			this.playing = true;
+			this.tickProgress();
 		} else if (notification === "PAUSE") {
 			this.playing = false;
 			this.updateDom(500);
@@ -128,24 +146,20 @@ Module.register("MMM-MusicDisplay", {
 		}
 
 		if (this.config.showProgress && this.progress) {
-			const start = this.progress.start / 44100;
-			const current = this.progress.current / 44100;
-			const end = this.progress.end / 44100;
-			let elapsed = current - start;
-			const duration = end - start;
-			if (elapsed > duration) elapsed = duration;
-			if (elapsed < 0) elapsed = 0;
-
 			const bar = document.createElement("progress");
 			bar.className = "music-progress";
-			bar.value = elapsed;
-			bar.max = duration;
+			this.progressBar = bar;
 			info.appendChild(bar);
 
 			const time = document.createElement("div");
 			time.className = "music-time xsmall dimmed";
-			time.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
+			this.progressLabel = time;
 			info.appendChild(time);
+
+			this.tickProgress();
+		} else {
+			this.progressBar = null;
+			this.progressLabel = null;
 		}
 
 		if (!this.playing && hasMetadata) {
