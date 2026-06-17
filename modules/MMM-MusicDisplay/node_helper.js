@@ -1,15 +1,20 @@
 const NodeHelper = require("node_helper");
 const fs = require("fs");
+const http = require("http");
 const https = require("https");
+const path = require("path");
 const { exec } = require("child_process");
 
 const DBUS_DEST = "org.gnome.ShairportSync";
 const DBUS_PATH = "/org/mpris/MediaPlayer2";
 const DBUS_IFACE = "org.mpris.MediaPlayer2.Player";
+const TRACKS_FILE = path.join(__dirname, "recent_tracks.json");
+const MAX_TRACKS = 50;
 
 module.exports = NodeHelper.create({
 	start: function () {
 		this.reading = false;
+		this.recentTracks = this.loadTracks();
 	},
 
 	socketNotificationReceived: function (notification, payload) {
@@ -17,25 +22,42 @@ module.exports = NodeHelper.create({
 			this.config = payload;
 			this.reading = true;
 			this.startReading();
+			this.startTrackServer();
 			this.checkCurrentPlayback();
-			this.fetchRecentTracks();
-			if (this.config.lastfmApiKey && this.config.lastfmUsername) {
-				setInterval(() => this.fetchRecentTracks(), this.config.recentPollInterval || 300000);
+			if (this.recentTracks.length > 0) {
+				this.sendSocketNotification("RECENT_TRACKS", this.recentTracks);
 			}
 		}
 	},
 
-	fetchRecentTracks: function () {
-		const self = this;
-		if (!this.config.lastfmApiKey || !this.config.lastfmUsername) return;
+	loadTracks: function () {
+		try {
+			return JSON.parse(fs.readFileSync(TRACKS_FILE, "utf8"));
+		} catch (e) {
+			return [];
+		}
+	},
 
-		const url =
-			"https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks" +
-			"&user=" +
-			encodeURIComponent(this.config.lastfmUsername) +
-			"&api_key=" +
-			encodeURIComponent(this.config.lastfmApiKey) +
-			"&format=json&limit=50";
+	saveTracks: function () {
+		try {
+			fs.writeFileSync(TRACKS_FILE, JSON.stringify(this.recentTracks));
+		} catch (e) {
+			// ignore write errors
+		}
+	},
+
+	addTrack: function (track) {
+		this.recentTracks.unshift(track);
+		if (this.recentTracks.length > MAX_TRACKS) {
+			this.recentTracks = this.recentTracks.slice(0, MAX_TRACKS);
+		}
+		this.saveTracks();
+		this.sendSocketNotification("RECENT_TRACKS", this.recentTracks);
+	},
+
+	lookupArtwork: function (artist, album, callback) {
+		const query = encodeURIComponent(artist + " " + album);
+		const url = "https://itunes.apple.com/search?term=" + query + "&entity=album&limit=1";
 
 		https
 			.get(url, (res) => {
@@ -46,36 +68,75 @@ module.exports = NodeHelper.create({
 				res.on("end", () => {
 					try {
 						const json = JSON.parse(body);
-						if (!json.recenttracks || !json.recenttracks.track) return;
-						const tracks = json.recenttracks.track
-							.filter((t) => !t["@attr"] || !t["@attr"].nowplaying)
-							.map((t) => ({
-								title: t.name || "",
-								artist: (t.artist && t.artist["#text"]) || "",
-								album: (t.album && t.album["#text"]) || "",
-								image: self.getLargestImage(t.image),
-							}))
-							.filter((t) => t.title);
-						if (tracks.length > 0) {
-							self.sendSocketNotification("RECENT_TRACKS", tracks);
+						if (json.results && json.results.length > 0 && json.results[0].artworkUrl100) {
+							callback(json.results[0].artworkUrl100.replace("100x100bb", "600x600bb"));
+						} else {
+							callback("");
 						}
 					} catch (e) {
-						// ignore parse errors
+						callback("");
 					}
 				});
 			})
-			.on("error", () => {
-				// ignore network errors
-			});
+			.on("error", () => callback(""));
 	},
 
-	getLargestImage: function (images) {
-		if (!images || !Array.isArray(images)) return "";
-		for (const size of ["extralarge", "large", "medium"]) {
-			const img = images.find((i) => i.size === size);
-			if (img && img["#text"]) return img["#text"];
-		}
-		return "";
+	startTrackServer: function () {
+		const self = this;
+		const port = this.config.shortcutPort || 8181;
+
+		const server = http.createServer((req, res) => {
+			res.setHeader("Access-Control-Allow-Origin", "*");
+			res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+			res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
+			if (req.method === "OPTIONS") {
+				res.writeHead(204);
+				res.end();
+				return;
+			}
+
+			if (req.method === "POST" && req.url === "/track") {
+				let body = "";
+				req.on("data", (chunk) => {
+					body += chunk;
+				});
+				req.on("end", () => {
+					try {
+						const data = JSON.parse(body);
+						const track = {
+							title: String(data.title || ""),
+							artist: String(data.artist || ""),
+							album: String(data.album || ""),
+							image: "",
+						};
+
+						if (!track.title) {
+							res.writeHead(400, { "Content-Type": "application/json" });
+							res.end(JSON.stringify({ error: "title is required" }));
+							return;
+						}
+
+						self.lookupArtwork(track.artist, track.album, (imageUrl) => {
+							track.image = imageUrl;
+							self.addTrack(track);
+							res.writeHead(200, { "Content-Type": "application/json" });
+							res.end(JSON.stringify({ ok: true }));
+						});
+					} catch (e) {
+						res.writeHead(400, { "Content-Type": "application/json" });
+						res.end(JSON.stringify({ error: "invalid JSON" }));
+					}
+				});
+			} else {
+				res.writeHead(404);
+				res.end("Not found");
+			}
+		});
+
+		server.listen(port, () => {
+			console.log("[MMM-MusicDisplay] Track server listening on port " + port);
+		});
 	},
 
 	checkCurrentPlayback: function () {

@@ -4,9 +4,7 @@ Module.register("MMM-MusicDisplay", {
 		showProgress: true,
 		showAlbumArt: true,
 		artSize: 144,
-		lastfmApiKey: "",
-		lastfmUsername: "",
-		recentPollInterval: 300000,
+		shortcutPort: 8181,
 		rotationSpeed: 8000,
 	},
 

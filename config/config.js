@@ -107,8 +107,6 @@ let config = {
     position: 'bottom_left',
     config: {
         metadataPipe: "/tmp/shairport-sync-metadata",
-        lastfmApiKey: "",    // Get a free key at last.fm/api/account/create
-        lastfmUsername: "",   // Your Last.fm username
     }
 },
 
