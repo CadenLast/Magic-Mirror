@@ -163,13 +163,13 @@ Module.register("MMM-MusicDisplay", {
 
 	scheduleUpdate: function () {
 		if (this._marqueeTimer) clearTimeout(this._marqueeTimer);
-		if (this._updateTimer) return;
+		if (this._updateTimer) clearTimeout(this._updateTimer);
 		this._updateTimer = setTimeout(() => {
 			this._updateTimer = null;
 			this.resetRefs();
 			this.updateDom(500);
 			this._marqueeTimer = setTimeout(() => this.bindMarquees(), 600);
-		}, 100);
+		}, 300);
 	},
 
 	resetRefs: function () {

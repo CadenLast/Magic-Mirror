@@ -225,6 +225,22 @@ module.exports = NodeHelper.create({
 							// cover art file not accessible
 						}
 					}
+
+					const lengthUs = d["mpris:length"] && d["mpris:length"].data;
+					if (lengthUs) {
+						const posCmd = `busctl --json=short get-property ${DBUS_DEST} ${DBUS_PATH} ${DBUS_IFACE} Position 2>/dev/null`;
+						exec(posCmd, (err3, stdout3) => {
+							if (err3 || !stdout3.trim()) return;
+							try {
+								const posUs = JSON.parse(stdout3.trim()).data;
+								const current = Math.round(posUs / 1000000 * 44100);
+								const end = Math.round(lengthUs / 1000000 * 44100);
+								self.sendSocketNotification("PROGRESS", "0/" + current + "/" + end);
+							} catch (e) {
+								// position not available
+							}
+						});
+					}
 				} catch (e) {
 					// DBUS metadata not available
 				}
