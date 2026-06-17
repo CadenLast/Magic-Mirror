@@ -29,7 +29,7 @@ Module.register("MMM-Wallpaper", {
 	applyWallpaper () {
 		const file = this.wallpapers[this.current];
 		document.documentElement.style.background =
-			`url("config/wallpapers/${file}") center / cover no-repeat`;
+			`url("config/darkwallpapers/${file}") center / cover no-repeat`;
 	},
 
 	getDom () {
