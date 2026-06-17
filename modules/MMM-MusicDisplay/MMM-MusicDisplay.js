@@ -162,22 +162,44 @@ Module.register("MMM-MusicDisplay", {
 		label.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
 	},
 
-	scheduleUpdate: function (delay) {
+	updateLiveView: function () {
+		const wrapper = document.querySelector(".MMM-MusicDisplay");
+		if (!wrapper) return false;
+		const title = wrapper.querySelector(".music-title .marquee-content");
+		const artist = wrapper.querySelector(".music-artist .marquee-content");
+		const album = wrapper.querySelector(".music-album .marquee-content");
+		if (!title) return false;
+
+		title.classList.remove("marquee-scroll");
+		title.textContent = this.metadata.title || "";
+		if (artist) {
+			artist.classList.remove("marquee-scroll");
+			artist.textContent = this.metadata.artist || "";
+		}
+		if (album) {
+			album.classList.remove("marquee-scroll");
+			album.textContent = this.metadata.album || "";
+		}
+
+		const img = wrapper.querySelector(".music-art");
+		if (img && this.albumArt) img.src = this.albumArt;
+
+		setTimeout(() => this.bindMarquees(), 100);
+		return true;
+	},
+
+	scheduleUpdate: function () {
 		if (this._marqueeTimer) clearTimeout(this._marqueeTimer);
 		if (this._updateTimer) clearTimeout(this._updateTimer);
 		this._updateTimer = setTimeout(() => {
 			this._updateTimer = null;
-			this.resetRefs();
+			this.carouselRing = null;
+			this.carouselCards = [];
+			this.carouselInfo = null;
+			this.carouselFrontIndex = -1;
 			this.updateDom(500);
 			this._marqueeTimer = setTimeout(() => this.bindMarquees(), 1000);
-		}, delay || 300);
-	},
-
-	resetRefs: function () {
-		this.carouselRing = null;
-		this.carouselCards = [];
-		this.carouselInfo = null;
-		this.carouselFrontIndex = -1;
+		}, 300);
 	},
 
 	socketNotificationReceived: function (notification, payload) {
@@ -194,7 +216,9 @@ Module.register("MMM-MusicDisplay", {
 		if (notification === "METADATA") {
 			this.metadata = payload;
 			this.playing = true;
-			this.scheduleUpdate();
+			if (!this.updateLiveView()) {
+				this.scheduleUpdate();
+			}
 		} else if (notification === "IMAGE") {
 			this.albumArt = payload || null;
 			const wrapper = document.querySelector(".MMM-MusicDisplay");
@@ -216,7 +240,6 @@ Module.register("MMM-MusicDisplay", {
 			this.tickProgress();
 		} else if (notification === "PAUSE") {
 			this.playing = false;
-			this.scheduleUpdate(3000);
 		} else if (notification === "RESUME") {
 			if (!this.playing) {
 				this.playing = true;
@@ -228,7 +251,7 @@ Module.register("MMM-MusicDisplay", {
 			this.albumArt = null;
 			this.progress = null;
 			this.hasRealProgress = false;
-			this.scheduleUpdate(3000);
+			this.scheduleUpdate();
 		}
 	},
 
