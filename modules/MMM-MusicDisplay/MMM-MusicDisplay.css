@@ -1,0 +1,146 @@
+.MMM-MusicDisplay {
+  min-width: 336px;
+  font-size: 120%;
+}
+
+.music-wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 8px;
+}
+
+.music-wrapper.hidden {
+  display: none;
+}
+
+.music-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.music-art {
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.music-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.marquee-container {
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.marquee-content {
+  display: inline-block;
+  padding-right: 0;
+}
+
+.marquee-scroll {
+  animation: marquee-scroll linear infinite;
+  padding-right: 50px;
+}
+
+@keyframes marquee-scroll {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-100%);
+  }
+}
+
+.music-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.music-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border: none;
+  border-radius: 3px;
+}
+
+.music-progress::-webkit-progress-bar {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 3px;
+}
+
+.music-progress::-webkit-progress-value {
+  background-color: rgba(255, 255, 255, 0.8);
+  border-radius: 3px;
+}
+
+.music-time {
+  margin-top: 1px;
+}
+
+.music-paused {
+  font-style: italic;
+  margin-top: 2px;
+}
+
+.carousel-scene {
+  width: 700px;
+  max-width: 90vw;
+  margin-left: -100px;
+  height: 180px;
+  perspective: 800px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  user-select: none;
+}
+
+.carousel-scene:active {
+  cursor: grabbing;
+}
+
+.carousel-ring {
+  position: relative;
+  width: 130px;
+  height: 130px;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.carousel-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 130px;
+  height: 130px;
+  will-change: opacity;
+}
+
+.carousel-art {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.carousel-info {
+  text-align: center;
+  margin-top: 8px;
+  margin-left: -100px;
+  min-height: 2.5em;
+}
+
+.carousel-album {
+  margin-bottom: 2px;
+}

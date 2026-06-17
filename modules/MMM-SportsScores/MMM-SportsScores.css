@@ -183,7 +183,7 @@
   align-items: center;
   padding: 7px 12px;
   border-radius: 5px;
-  background: rgba(255, 255, 255, 0.03);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .scores-game-clickable {
@@ -192,11 +192,11 @@
 }
 
 .scores-game-clickable:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .scores-game-live {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .scores-teams {

@@ -1,0 +1,52 @@
+{% if mode === "live" %}
+  <div class="music-wrapper">
+    <div class="music-top">
+      {% if showAlbumArt and albumArt %}
+        <img class="music-art" src="{{ albumArt }}" width="{{ artSize }}" height="{{ artSize }}" />
+      {% endif %}
+      <div class="music-info">
+        {% if metadata.title %}
+          <div class="marquee-container music-title bright medium">
+            <span class="marquee-content">{{ metadata.title }}</span>
+          </div>
+        {% endif %}
+        {% if metadata.artist %}
+          <div class="marquee-container music-artist small dimmed">
+            <span class="marquee-content">{{ metadata.artist }}</span>
+          </div>
+        {% endif %}
+        {% if metadata.album %}
+          <div class="marquee-container music-album small dimmed">
+            <span class="marquee-content">{{ metadata.album }}</span>
+          </div>
+        {% endif %}
+        {% if not playing %}
+          <div class="music-paused xsmall dimmed">Paused</div>
+        {% endif %}
+      </div>
+    </div>
+    {% if showProgress and hasProgress %}
+      <div class="music-bottom">
+        <progress class="music-progress"></progress>
+        <div class="music-time xsmall dimmed"></div>
+      </div>
+    {% endif %}
+  </div>
+{% elif mode === "carousel" %}
+  <div class="music-wrapper">
+    <div class="carousel-scene">
+      <div class="carousel-ring">
+        {% for track in tracks %}
+          <div class="carousel-card" data-angle="{{ track.angle }}" style="transform: rotateY({{ track.angle }}deg) translateZ({{ radius }}px)">
+            {% if track.image %}
+              <img class="carousel-art" src="{{ track.image }}" />
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="carousel-info"></div>
+  </div>
+{% else %}
+  <div class="music-wrapper hidden"></div>
+{% endif %}

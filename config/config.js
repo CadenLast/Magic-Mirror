@@ -73,7 +73,7 @@ let config = {
 			module: "MMM-HourlyWeather",
 			position: "top_right",
 			config: {
-				hoursToShow: 12,
+				hoursToShow: 48,
 				timeFormat: 12
 			}
 		},
@@ -102,6 +102,27 @@ let config = {
 				]
 			}
 		},
+{
+    module: 'MMM-MusicDisplay',
+    position: 'bottom_left',
+    config: {
+        metadataPipe: "/tmp/shairport-sync-metadata",
+        favorites: [
+            { artist: "Olivia Rodrigo", album: "GUTS" },
+            { artist: "Olivia Rodrigo", album: "You Seem So Sad for a Girl in Love" },
+            { artist: "My Chemical Romance", album: "The Black Parade" },
+            { artist: "Harry Styles", album: "Kiss All The Time Disco Occasionally" },
+            { artist: "Lorde", album: "Pure Heroine" },
+            { artist: "Lorde", album: "Melodrama" },
+            { artist: "Lorde", album: "Solar Power" },
+            { artist: "Lorde", album: "Virgin" },
+            { artist: "Linkin Park", album: "From Zero" },
+            { artist: "Billie Eilish", album: "HIT ME HARD AND SOFT" },
+            { artist: "Tears for Fears", album: "Songs from the Big Chair" },
+        ],
+    }
+},
+
 		{
 			module: "MMM-PackageTracking",
 			position: "top_right",
@@ -118,7 +139,20 @@ let config = {
 		},
 		{
 			module: "MMM-SportsScores",
-			position: "top_left"
+			position: "top_left",
+			config: {
+				favoriteTeams: [
+					{ team: "Bears", sport: "football", league: "nfl" },
+					{ team: "Bulls", sport: "basketball", league: "nba" },
+					{ team: "Cubs", sport: "baseball", league: "mlb" },
+					{ team: "Iowa State", sport: "football", league: "college-football" },
+					{ team: "Hawkeyes", sport: "football", league: "college-football" },
+					{ team: "Hawkeyes", sport: "basketball", league: "mens-college-basketball" },
+					{ team: "Iowa State", sport: "basketball", league: "mens-college-basketball" },
+					{ team: "Drake", sport: "basketball", league: "mens-college-basketball" },
+					{ team: "Northern Iowa", sport: "basketball", league: "mens-college-basketball" }
+				],
+			}
 		},
 		{
 			module: "MMM-Wallpaper",

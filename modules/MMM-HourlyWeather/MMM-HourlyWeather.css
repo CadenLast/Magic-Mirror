@@ -52,9 +52,26 @@
   margin-right: 5px;
 }
 
+.hourly-scroll {
+  max-height: 600px;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.hourly-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .hourly-weather-table {
   border-collapse: collapse;
   width: 100%;
+}
+
+.hourly-weather-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .hourly-weather-table th {
