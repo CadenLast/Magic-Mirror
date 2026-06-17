@@ -96,6 +96,7 @@
   width: 700px;
   max-width: 90vw;
   margin-left: -100px;
+  margin-top: 24px;
   height: 180px;
   perspective: 800px;
   display: flex;
@@ -136,7 +137,7 @@
 
 .carousel-info {
   text-align: center;
-  margin-top: 8px;
+  margin-top: 4px;
   margin-left: -100px;
   min-height: 2.5em;
 }

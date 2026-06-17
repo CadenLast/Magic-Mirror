@@ -44,12 +44,12 @@ let config = {
 		{
 			module: "alert",
 		},
-		{
-			//TODO deadbolt module
-		},
-		{
-			//TODO doorbell camera module
-		},
+		//{
+		//	//TODO deadbolt module
+		//},
+		//{
+		//	//TODO doorbell camera module
+		//},
 		{
 			module: "clock",
 			position: "top_left"
