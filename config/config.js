@@ -102,6 +102,17 @@ let config = {
 				]
 			}
 		},
+{
+    module: 'MMM-ShairportMetadata',
+    position: 'top_left',
+    header: 'Now Playing',
+    config: {
+        metadataPipe: "/tmp/shairport-sync-metadata",
+        alignment: "bottom_left",
+	runrReader: false
+    }
+},
+
 		{
 			module: "MMM-PackageTracking",
 			position: "top_right",
