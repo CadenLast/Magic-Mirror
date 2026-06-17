@@ -1,6 +1,5 @@
 const NodeHelper = require("node_helper");
 const fs = require("fs");
-const http = require("http");
 const https = require("https");
 const path = require("path");
 const { exec } = require("child_process");
@@ -8,13 +7,12 @@ const { exec } = require("child_process");
 const DBUS_DEST = "org.gnome.ShairportSync";
 const DBUS_PATH = "/org/mpris/MediaPlayer2";
 const DBUS_IFACE = "org.mpris.MediaPlayer2.Player";
-const TRACKS_FILE = path.join(__dirname, "recent_tracks.json");
-const MAX_TRACKS = 50;
+const ART_CACHE_FILE = path.join(__dirname, "art_cache.json");
 
 module.exports = NodeHelper.create({
 	start: function () {
 		this.reading = false;
-		this.recentTracks = this.loadTracks();
+		this.artCache = this.loadArtCache();
 	},
 
 	socketNotificationReceived: function (notification, payload) {
@@ -22,37 +20,65 @@ module.exports = NodeHelper.create({
 			this.config = payload;
 			this.reading = true;
 			this.startReading();
-			this.startTrackServer();
 			this.checkCurrentPlayback();
-			if (this.recentTracks.length > 0) {
-				this.sendSocketNotification("RECENT_TRACKS", this.recentTracks);
+			this.loadFavorites();
+		}
+	},
+
+	loadArtCache: function () {
+		try {
+			return JSON.parse(fs.readFileSync(ART_CACHE_FILE, "utf8"));
+		} catch (e) {
+			return {};
+		}
+	},
+
+	saveArtCache: function () {
+		try {
+			fs.writeFileSync(ART_CACHE_FILE, JSON.stringify(this.artCache));
+		} catch (e) {
+			// ignore
+		}
+	},
+
+	loadFavorites: function () {
+		const favorites = this.config.favorites || [];
+		if (favorites.length === 0) return;
+
+		let pending = favorites.length;
+		const results = [];
+
+		favorites.forEach((fav, i) => {
+			const cacheKey = fav.artist + " - " + fav.album;
+
+			const finish = (image) => {
+				results[i] = {
+					title: fav.title || "",
+					artist: fav.artist || "",
+					album: fav.album || "",
+					image: image || "",
+				};
+				pending--;
+				if (pending === 0) {
+					this.sendSocketNotification(
+						"RECENT_TRACKS",
+						results.filter((r) => r)
+					);
+				}
+			};
+
+			if (this.artCache[cacheKey]) {
+				finish(this.artCache[cacheKey]);
+			} else {
+				this.lookupArtwork(fav.artist, fav.album, (url) => {
+					if (url) {
+						this.artCache[cacheKey] = url;
+						this.saveArtCache();
+					}
+					finish(url);
+				});
 			}
-		}
-	},
-
-	loadTracks: function () {
-		try {
-			return JSON.parse(fs.readFileSync(TRACKS_FILE, "utf8"));
-		} catch (e) {
-			return [];
-		}
-	},
-
-	saveTracks: function () {
-		try {
-			fs.writeFileSync(TRACKS_FILE, JSON.stringify(this.recentTracks));
-		} catch (e) {
-			// ignore write errors
-		}
-	},
-
-	addTrack: function (track) {
-		this.recentTracks.unshift(track);
-		if (this.recentTracks.length > MAX_TRACKS) {
-			this.recentTracks = this.recentTracks.slice(0, MAX_TRACKS);
-		}
-		this.saveTracks();
-		this.sendSocketNotification("RECENT_TRACKS", this.recentTracks);
+		});
 	},
 
 	lookupArtwork: function (artist, album, callback) {
@@ -79,64 +105,6 @@ module.exports = NodeHelper.create({
 				});
 			})
 			.on("error", () => callback(""));
-	},
-
-	startTrackServer: function () {
-		const self = this;
-		const port = this.config.shortcutPort || 8181;
-
-		const server = http.createServer((req, res) => {
-			res.setHeader("Access-Control-Allow-Origin", "*");
-			res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-			res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-
-			if (req.method === "OPTIONS") {
-				res.writeHead(204);
-				res.end();
-				return;
-			}
-
-			if (req.method === "POST" && req.url === "/track") {
-				let body = "";
-				req.on("data", (chunk) => {
-					body += chunk;
-				});
-				req.on("end", () => {
-					try {
-						const data = JSON.parse(body);
-						const track = {
-							title: String(data.title || ""),
-							artist: String(data.artist || ""),
-							album: String(data.album || ""),
-							image: "",
-						};
-
-						if (!track.title) {
-							res.writeHead(400, { "Content-Type": "application/json" });
-							res.end(JSON.stringify({ error: "title is required" }));
-							return;
-						}
-
-						self.lookupArtwork(track.artist, track.album, (imageUrl) => {
-							track.image = imageUrl;
-							self.addTrack(track);
-							res.writeHead(200, { "Content-Type": "application/json" });
-							res.end(JSON.stringify({ ok: true }));
-						});
-					} catch (e) {
-						res.writeHead(400, { "Content-Type": "application/json" });
-						res.end(JSON.stringify({ error: "invalid JSON" }));
-					}
-				});
-			} else {
-				res.writeHead(404);
-				res.end("Not found");
-			}
-		});
-
-		server.listen(port, () => {
-			console.log("[MMM-MusicDisplay] Track server listening on port " + port);
-		});
 	},
 
 	checkCurrentPlayback: function () {

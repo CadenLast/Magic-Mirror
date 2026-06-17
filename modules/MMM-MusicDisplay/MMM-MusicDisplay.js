@@ -4,8 +4,8 @@ Module.register("MMM-MusicDisplay", {
 		showProgress: true,
 		showAlbumArt: true,
 		artSize: 144,
-		shortcutPort: 8181,
 		rotationSpeed: 8000,
+		favorites: [],
 	},
 
 	start: function () {
