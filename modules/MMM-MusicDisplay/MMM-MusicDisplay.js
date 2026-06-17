@@ -3,7 +3,7 @@ Module.register("MMM-MusicDisplay", {
 		metadataPipe: "/tmp/shairport-sync-metadata",
 		showProgress: true,
 		showAlbumArt: true,
-		artSize: 120,
+		artSize: 144,
 	},
 
 	start: function () {
