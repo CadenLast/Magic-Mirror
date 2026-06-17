@@ -35,7 +35,7 @@ module.exports = NodeHelper.create({
 			encodeURIComponent(this.config.lastfmUsername) +
 			"&api_key=" +
 			encodeURIComponent(this.config.lastfmApiKey) +
-			"&format=json&limit=10";
+			"&format=json&limit=50";
 
 		https
 			.get(url, (res) => {
