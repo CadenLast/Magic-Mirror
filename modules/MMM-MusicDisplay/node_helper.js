@@ -1,5 +1,6 @@
 const NodeHelper = require("node_helper");
 const fs = require("fs");
+const https = require("https");
 const { exec } = require("child_process");
 
 const DBUS_DEST = "org.gnome.ShairportSync";
@@ -17,7 +18,64 @@ module.exports = NodeHelper.create({
 			this.reading = true;
 			this.startReading();
 			this.checkCurrentPlayback();
+			this.fetchRecentTracks();
+			if (this.config.lastfmApiKey && this.config.lastfmUsername) {
+				setInterval(() => this.fetchRecentTracks(), this.config.recentPollInterval || 300000);
+			}
 		}
+	},
+
+	fetchRecentTracks: function () {
+		const self = this;
+		if (!this.config.lastfmApiKey || !this.config.lastfmUsername) return;
+
+		const url =
+			"https://ws.audioscrobbler.com/2.0/?method=user.getrecenttracks" +
+			"&user=" +
+			encodeURIComponent(this.config.lastfmUsername) +
+			"&api_key=" +
+			encodeURIComponent(this.config.lastfmApiKey) +
+			"&format=json&limit=10";
+
+		https
+			.get(url, (res) => {
+				let body = "";
+				res.on("data", (chunk) => {
+					body += chunk;
+				});
+				res.on("end", () => {
+					try {
+						const json = JSON.parse(body);
+						if (!json.recenttracks || !json.recenttracks.track) return;
+						const tracks = json.recenttracks.track
+							.filter((t) => !t["@attr"] || !t["@attr"].nowplaying)
+							.map((t) => ({
+								title: t.name || "",
+								artist: (t.artist && t.artist["#text"]) || "",
+								album: (t.album && t.album["#text"]) || "",
+								image: self.getLargestImage(t.image),
+							}))
+							.filter((t) => t.title);
+						if (tracks.length > 0) {
+							self.sendSocketNotification("RECENT_TRACKS", tracks);
+						}
+					} catch (e) {
+						// ignore parse errors
+					}
+				});
+			})
+			.on("error", () => {
+				// ignore network errors
+			});
+	},
+
+	getLargestImage: function (images) {
+		if (!images || !Array.isArray(images)) return "";
+		for (const size of ["extralarge", "large", "medium"]) {
+			const img = images.find((i) => i.size === size);
+			if (img && img["#text"]) return img["#text"];
+		}
+		return "";
 	},
 
 	checkCurrentPlayback: function () {

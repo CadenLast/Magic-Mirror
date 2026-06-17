@@ -4,6 +4,10 @@ Module.register("MMM-MusicDisplay", {
 		showProgress: true,
 		showAlbumArt: true,
 		artSize: 144,
+		lastfmApiKey: "",
+		lastfmUsername: "",
+		recentPollInterval: 300000,
+		rotationSpeed: 8000,
 	},
 
 	start: function () {
@@ -14,6 +18,8 @@ Module.register("MMM-MusicDisplay", {
 		this.lastUpdate = 0;
 		this.progressBar = null;
 		this.progressLabel = null;
+		this.recentTracks = [];
+		this.currentTrackIndex = 0;
 		this.sendSocketNotification("CONFIG", this.config);
 
 		setInterval(() => {
@@ -22,6 +28,12 @@ Module.register("MMM-MusicDisplay", {
 				this.tickProgress();
 			}
 		}, 1000);
+
+		setInterval(() => {
+			if (!this.playing && this.recentTracks.length > 1) {
+				this.rotateToNext();
+			}
+		}, this.config.rotationSpeed);
 	},
 
 	getStyles: function () {
@@ -43,7 +55,73 @@ Module.register("MMM-MusicDisplay", {
 		this.progressLabel.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
 	},
 
+	rotateToNext: function () {
+		const card = document.querySelector(".music-recent-card");
+		if (!card || card.classList.contains("rack-out") || card.classList.contains("rack-in")) return;
+
+		card.classList.add("rack-out");
+		card.addEventListener(
+			"animationend",
+			() => {
+				card.classList.remove("rack-out");
+				this.currentTrackIndex = (this.currentTrackIndex + 1) % this.recentTracks.length;
+
+				while (card.firstChild) card.removeChild(card.firstChild);
+				this.populateCard(card, this.recentTracks[this.currentTrackIndex]);
+
+				card.classList.add("rack-in");
+				card.addEventListener(
+					"animationend",
+					() => {
+						card.classList.remove("rack-in");
+					},
+					{ once: true }
+				);
+			},
+			{ once: true }
+		);
+	},
+
+	populateCard: function (card, track) {
+		const top = document.createElement("div");
+		top.className = "music-top";
+
+		if (track.image) {
+			const img = document.createElement("img");
+			img.className = "music-art";
+			img.src = track.image;
+			img.width = this.config.artSize;
+			img.height = this.config.artSize;
+			top.appendChild(img);
+		}
+
+		const info = document.createElement("div");
+		info.className = "music-info";
+
+		if (track.title) {
+			info.appendChild(this.makeMarquee(track.title, "music-title bright medium"));
+		}
+		if (track.artist) {
+			info.appendChild(this.makeMarquee(track.artist, "music-artist small dimmed"));
+		}
+		if (track.album) {
+			info.appendChild(this.makeMarquee(track.album, "music-album small dimmed"));
+		}
+
+		top.appendChild(info);
+		card.appendChild(top);
+	},
+
 	socketNotificationReceived: function (notification, payload) {
+		if (notification === "RECENT_TRACKS") {
+			this.recentTracks = payload;
+			this.currentTrackIndex = 0;
+			if (!this.playing) {
+				this.updateDom(500);
+			}
+			return;
+		}
+
 		this.lastUpdate = Date.now();
 
 		if (notification === "METADATA") {
@@ -73,6 +151,7 @@ Module.register("MMM-MusicDisplay", {
 			this.metadata = {};
 			this.albumArt = null;
 			this.progress = null;
+			this.currentTrackIndex = 0;
 			this.updateDom(500);
 		}
 	},
@@ -110,15 +189,21 @@ Module.register("MMM-MusicDisplay", {
 		const hasMetadata = this.metadata && Object.keys(this.metadata).length > 0;
 		const stale = Date.now() - this.lastUpdate > 120000;
 
-		if (!hasMetadata && !this.playing) {
-			wrapper.classList.add("hidden");
-			return wrapper;
-		}
-		if (stale && !this.playing) {
-			wrapper.classList.add("hidden");
-			return wrapper;
+		if (this.playing || (hasMetadata && !stale)) {
+			this.data.header = "Now Playing";
+			return this.buildLiveView(wrapper);
 		}
 
+		if (this.recentTracks.length > 0) {
+			this.data.header = "Recently Played";
+			return this.buildRecentView(wrapper);
+		}
+
+		wrapper.classList.add("hidden");
+		return wrapper;
+	},
+
+	buildLiveView: function (wrapper) {
 		const top = document.createElement("div");
 		top.className = "music-top";
 
@@ -137,16 +222,14 @@ Module.register("MMM-MusicDisplay", {
 		if (this.metadata.title) {
 			info.appendChild(this.makeMarquee(this.metadata.title, "music-title bright medium"));
 		}
-
 		if (this.metadata.artist) {
 			info.appendChild(this.makeMarquee(this.metadata.artist, "music-artist small dimmed"));
 		}
-
 		if (this.metadata.album) {
 			info.appendChild(this.makeMarquee(this.metadata.album, "music-album small dimmed"));
 		}
 
-		if (!this.playing && hasMetadata) {
+		if (!this.playing) {
 			const paused = document.createElement("div");
 			paused.className = "music-paused xsmall dimmed";
 			paused.textContent = "Paused";
@@ -177,6 +260,19 @@ Module.register("MMM-MusicDisplay", {
 			this.progressLabel = null;
 		}
 
+		return wrapper;
+	},
+
+	buildRecentView: function (wrapper) {
+		const container = document.createElement("div");
+		container.className = "music-recent-container";
+
+		const card = document.createElement("div");
+		card.className = "music-recent-card";
+		this.populateCard(card, this.recentTracks[this.currentTrackIndex]);
+
+		container.appendChild(card);
+		wrapper.appendChild(container);
 		return wrapper;
 	},
 });
