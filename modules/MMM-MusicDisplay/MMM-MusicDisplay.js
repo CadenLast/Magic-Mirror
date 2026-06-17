@@ -168,7 +168,7 @@ Module.register("MMM-MusicDisplay", {
 			this._updateTimer = null;
 			this.resetRefs();
 			this.updateDom(500);
-			this._marqueeTimer = setTimeout(() => this.bindMarquees(), 600);
+			this._marqueeTimer = setTimeout(() => this.bindMarquees(), 1000);
 		}, 300);
 	},
 
@@ -204,6 +204,7 @@ Module.register("MMM-MusicDisplay", {
 				this.scheduleUpdate();
 			}
 		} else if (notification === "PROGRESS") {
+			const hadProgress = !!this.progress;
 			const parts = payload.split("/");
 			this.progress = {
 				start: parseInt(parts[0]),
@@ -211,7 +212,11 @@ Module.register("MMM-MusicDisplay", {
 				end: parseInt(parts[2]),
 			};
 			this.playing = true;
-			this.tickProgress();
+			if (!hadProgress) {
+				this.scheduleUpdate();
+			} else {
+				this.tickProgress();
+			}
 		} else if (notification === "PAUSE") {
 			this.playing = false;
 			this.scheduleUpdate();
