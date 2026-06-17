@@ -25,10 +25,11 @@ Module.register("MMM-MusicDisplay", {
 		this.dragIdleTime = 0;
 		this._updateTimer = null;
 		this._marqueeTimer = null;
+		this.hasRealProgress = false;
 		this.sendSocketNotification("CONFIG", this.config);
 
 		setInterval(() => {
-			if (this.playing && this.progress) {
+			if (this.playing && this.progress && this.hasRealProgress) {
 				this.progress.current += 44100;
 				this.tickProgress();
 			}
@@ -211,6 +212,9 @@ Module.register("MMM-MusicDisplay", {
 				current: parseInt(parts[1]),
 				end: parseInt(parts[2]),
 			};
+			if (this.progress.start > 0) {
+				this.hasRealProgress = true;
+			}
 			this.playing = true;
 			if (!hadProgress) {
 				this.scheduleUpdate();
@@ -228,6 +232,7 @@ Module.register("MMM-MusicDisplay", {
 			this.metadata = {};
 			this.albumArt = null;
 			this.progress = null;
+			this.hasRealProgress = false;
 			this.scheduleUpdate();
 		}
 	},
