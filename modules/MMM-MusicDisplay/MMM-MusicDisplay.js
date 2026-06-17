@@ -23,6 +23,8 @@ Module.register("MMM-MusicDisplay", {
 		this.dragging = false;
 		this.dragVelocity = 0;
 		this.dragIdleTime = 0;
+		this._updateTimer = null;
+		this._marqueeTimer = null;
 		this.sendSocketNotification("CONFIG", this.config);
 
 		setInterval(() => {
@@ -156,8 +158,17 @@ Module.register("MMM-MusicDisplay", {
 		label.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
 	},
 
-	//TODO connect to api to get recently listened to tracks ( Apple Music doesnt do it :( )
-	//currently using favorites list in config
+	scheduleUpdate: function () {
+		if (this._marqueeTimer) clearTimeout(this._marqueeTimer);
+		if (this._updateTimer) return;
+		this._updateTimer = setTimeout(() => {
+			this._updateTimer = null;
+			this.resetRefs();
+			this.updateDom(500);
+			this._marqueeTimer = setTimeout(() => this.bindMarquees(), 600);
+		}, 100);
+	},
+
 	resetRefs: function () {
 		this.carouselRing = null;
 		this.carouselCards = [];
@@ -169,9 +180,7 @@ Module.register("MMM-MusicDisplay", {
 		if (notification === "RECENT_TRACKS") {
 			this.recentTracks = payload;
 			if (!this.playing) {
-				this.resetRefs();
-				this.updateDom(500);
-				setTimeout(() => this.bindMarquees(), 600);
+				this.scheduleUpdate();
 			}
 			return;
 		}
@@ -181,12 +190,16 @@ Module.register("MMM-MusicDisplay", {
 		if (notification === "METADATA") {
 			this.metadata = payload;
 			this.playing = true;
-			this.resetRefs();
-			this.updateDom(500);
-			setTimeout(() => this.bindMarquees(), 600);
+			this.scheduleUpdate();
 		} else if (notification === "IMAGE") {
 			this.albumArt = payload || null;
-			this.updateDom(500);
+			const wrapper = document.querySelector(".MMM-MusicDisplay");
+			const img = wrapper && wrapper.querySelector(".music-art");
+			if (img && this.albumArt) {
+				img.src = this.albumArt;
+			} else {
+				this.scheduleUpdate();
+			}
 		} else if (notification === "PROGRESS") {
 			const parts = payload.split("/");
 			this.progress = {
@@ -198,20 +211,16 @@ Module.register("MMM-MusicDisplay", {
 			this.tickProgress();
 		} else if (notification === "PAUSE") {
 			this.playing = false;
-			this.resetRefs();
-			this.updateDom(500);
+			this.scheduleUpdate();
 		} else if (notification === "RESUME") {
 			this.playing = true;
-			this.resetRefs();
-			this.updateDom(500);
-			setTimeout(() => this.bindMarquees(), 600);
+			this.scheduleUpdate();
 		} else if (notification === "STOP") {
 			this.playing = false;
 			this.metadata = {};
 			this.albumArt = null;
 			this.progress = null;
-			this.resetRefs();
-			this.updateDom(500);
+			this.scheduleUpdate();
 		}
 	},
 
