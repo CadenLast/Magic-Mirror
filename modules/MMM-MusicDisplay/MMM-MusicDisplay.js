@@ -303,8 +303,8 @@ Module.register("MMM-MusicDisplay", {
 			if (effective > 180) effective = 360 - effective;
 
 			let opacity;
-			if (effective <= 30) opacity = 1;
-			else if (effective <= 100) opacity = 1 - (effective - 30) / 70;
+			if (effective <= 20) opacity = 1;
+			else if (effective <= 60) opacity = 1 - (effective - 20) / 40;
 			else opacity = 0;
 
 			card.el.style.opacity = opacity;

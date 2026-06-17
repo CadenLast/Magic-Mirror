@@ -93,13 +93,14 @@
 }
 
 .carousel-scene {
-  width: 100%;
+  width: 700px;
+  max-width: 90vw;
+  margin-left: -100px;
   height: 180px;
   perspective: 800px;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: visible;
   cursor: grab;
   user-select: none;
 }
@@ -131,6 +132,13 @@
   object-fit: cover;
   border-radius: 8px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.carousel-info {
+  text-align: center;
+  margin-top: 8px;
+  margin-left: -100px;
+  min-height: 2.5em;
 }
 
 .carousel-album {

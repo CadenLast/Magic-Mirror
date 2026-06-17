@@ -1,6 +1,6 @@
 Module.register("MMM-HourlyWeather", {
 	defaults: {
-		hoursToShow: 12,
+		hoursToShow: 48,
 		timeFormat: 12,
 		units: "imperial"
 	},
@@ -18,6 +18,16 @@ Module.register("MMM-HourlyWeather", {
 		this.hourlyData = [];
 		this.sunrise = null;
 		this.sunset = null;
+
+		document.addEventListener("mm-activity", () => {
+			if (this._resetTimer) clearTimeout(this._resetTimer);
+			this._resetTimer = setTimeout(() => {
+				const wrapper = document.getElementById(this.identifier);
+				if (!wrapper) return;
+				const scroll = wrapper.querySelector(".hourly-scroll");
+				if (scroll) scroll.scrollTop = 0;
+			}, config.resetTimeout);
+		});
 	},
 
 	notificationReceived (notification, payload) {

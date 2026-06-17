@@ -73,21 +73,21 @@ let config = {
 			module: "MMM-HourlyWeather",
 			position: "top_right",
 			config: {
-				hoursToShow: 12,
+				hoursToShow: 48,
 				timeFormat: 12
 			}
 		},
-		// {
-		// 	module: "MMM-Radar",
-		// 	position: "top_left",
-		// 	config: {
-		// 		lat: 41.7268,
-		// 		lon: -93.6043,
-		// 		zoom: 6.5,
-		// 		width: "480px",
-		// 		height: "360px"
-		// 	}
-		// },
+		{
+			module: "MMM-Radar",
+			position: "top_left",
+			config: {
+				lat: 41.7268,
+				lon: -93.6043,
+				zoom: 6.5,
+				width: "480px",
+				height: "360px"
+			}
+		},
 		{
 			module: "MMM-WeekCalendar",
 			position: "bottom_bar",
@@ -137,23 +137,23 @@ let config = {
 				daysToShowDelivered: 30
 			}
 		},
-		// {
-		// 	module: "MMM-SportsScores",
-		// 	position: "top_left",
-		// 	config: {
-		// 		favoriteTeams: [
-		// 			{ team: "Bears", sport: "football", league: "nfl" },
-		// 			{ team: "Bulls", sport: "basketball", league: "nba" },
-		// 			{ team: "Cubs", sport: "baseball", league: "mlb" },
-		// 			{ team: "Iowa State", sport: "football", league: "college-football" },
-		// 			{ team: "Hawkeyes", sport: "football", league: "college-football" },
-		// 			{ team: "Hawkeyes", sport: "basketball", league: "mens-college-basketball" },
-		// 			{ team: "Iowa State", sport: "basketball", league: "mens-college-basketball" },
-		// 			{ team: "Drake", sport: "basketball", league: "mens-college-basketball" },
-		// 			{ team: "Northern Iowa", sport: "basketball", league: "mens-college-basketball" }
-		// 		],
-		// 	}
-		// },
+		{
+			module: "MMM-SportsScores",
+			position: "top_left",
+			config: {
+				favoriteTeams: [
+					{ team: "Bears", sport: "football", league: "nfl" },
+					{ team: "Bulls", sport: "basketball", league: "nba" },
+					{ team: "Cubs", sport: "baseball", league: "mlb" },
+					{ team: "Iowa State", sport: "football", league: "college-football" },
+					{ team: "Hawkeyes", sport: "football", league: "college-football" },
+					{ team: "Hawkeyes", sport: "basketball", league: "mens-college-basketball" },
+					{ team: "Iowa State", sport: "basketball", league: "mens-college-basketball" },
+					{ team: "Drake", sport: "basketball", league: "mens-college-basketball" },
+					{ team: "Northern Iowa", sport: "basketball", league: "mens-college-basketball" }
+				],
+			}
+		},
 		{
 			module: "MMM-Wallpaper",
 			config: {

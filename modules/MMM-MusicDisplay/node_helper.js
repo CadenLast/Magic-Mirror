@@ -126,20 +126,26 @@ module.exports = NodeHelper.create({
 		}).on("error", () => callback(""));
 	},
 
+	followRedirects: function (url, opts, callback, hops) {
+		if (hops > 5) return callback(null);
+		this.timedGet(url, opts, (res) => {
+			if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+				res.resume();
+				this.followRedirects(res.headers.location, opts, callback, hops + 1);
+				return;
+			}
+			callback(res);
+		}).on("error", () => callback(null));
+	},
+
 	fetchCoverArt: function (releaseGroupId, callback) {
 		const url = "https://coverartarchive.org/release-group/" + releaseGroupId;
 		const opts = { headers: { "User-Agent": "MagicMirror-MusicDisplay/1.0 (mirror)" } };
 
-		this.timedGet(url, opts, (res) => {
-			if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-				this.timedGet(res.headers.location, opts, (res2) => {
-					this.parseCoverArtResponse(res2, callback);
-				}).on("error", () => callback(""));
-				res.resume();
-				return;
-			}
+		this.followRedirects(url, opts, (res) => {
+			if (!res) return callback("");
 			this.parseCoverArtResponse(res, callback);
-		}).on("error", () => callback(""));
+		}, 0);
 	},
 
 	parseCoverArtResponse: function (res, callback) {
