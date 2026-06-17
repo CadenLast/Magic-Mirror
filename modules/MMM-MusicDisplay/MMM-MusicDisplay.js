@@ -14,8 +14,6 @@ Module.register("MMM-MusicDisplay", {
 		this.progress = null;
 		this.playing = false;
 		this.lastUpdate = 0;
-		this.progressBar = null;
-		this.progressLabel = null;
 		this.recentTracks = [];
 		this.carouselAngle = 0;
 		this.carouselRing = null;
@@ -76,10 +74,8 @@ Module.register("MMM-MusicDisplay", {
 		let mode = "hidden";
 		if (isLive) {
 			mode = "live";
-			this.data.header = "Now Playing";
 		} else if (this.recentTracks.length > 0) {
 			mode = "carousel";
-			this.data.header = "Recently Played";
 		}
 
 		const n = this.recentTracks.length;
@@ -141,14 +137,12 @@ Module.register("MMM-MusicDisplay", {
 	},
 
 	tickProgress: function () {
-		if (!this.progressBar || !this.progressLabel) {
-			const wrapper = document.querySelector(".MMM-MusicDisplay");
-			if (wrapper) {
-				this.progressBar = wrapper.querySelector(".music-progress");
-				this.progressLabel = wrapper.querySelector(".music-time");
-			}
-		}
-		if (!this.progressBar || !this.progressLabel || !this.progress) return;
+		if (!this.progress) return;
+		const wrapper = document.querySelector(".MMM-MusicDisplay");
+		if (!wrapper) return;
+		const bar = wrapper.querySelector(".music-progress");
+		const label = wrapper.querySelector(".music-time");
+		if (!bar || !label) return;
 		const start = this.progress.start / 44100;
 		const current = this.progress.current / 44100;
 		const end = this.progress.end / 44100;
@@ -157,9 +151,9 @@ Module.register("MMM-MusicDisplay", {
 		if (elapsed > duration) elapsed = duration;
 		if (elapsed < 0) elapsed = 0;
 
-		this.progressBar.value = elapsed;
-		this.progressBar.max = duration;
-		this.progressLabel.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
+		bar.value = elapsed;
+		bar.max = duration;
+		label.textContent = this.secToTime(elapsed) + " / " + this.secToTime(duration);
 	},
 
 	//TODO connect to api to get recently listened to tracks ( Apple Music doesnt do it :( )
@@ -169,8 +163,6 @@ Module.register("MMM-MusicDisplay", {
 		this.carouselCards = [];
 		this.carouselInfo = null;
 		this.carouselFrontIndex = -1;
-		this.progressBar = null;
-		this.progressLabel = null;
 	},
 
 	socketNotificationReceived: function (notification, payload) {
