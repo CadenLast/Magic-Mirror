@@ -103,13 +103,11 @@ let config = {
 			}
 		},
 {
-    module: 'MMM-ShairportMetadata',
+    module: 'MMM-MusicDisplay',
     position: 'top_left',
     header: 'Now Playing',
     config: {
         metadataPipe: "/tmp/shairport-sync-metadata",
-        alignment: "bottom_left",
-	runrReader: false
     }
 },
 

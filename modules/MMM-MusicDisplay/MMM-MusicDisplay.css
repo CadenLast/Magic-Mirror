@@ -1,0 +1,63 @@
+.shairport-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shairport-wrapper.hidden {
+  display: none;
+}
+
+.shairport-art {
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+.shairport-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shairport-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 250px;
+}
+
+.shairport-subtitle {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 250px;
+}
+
+.shairport-progress {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 180px;
+  height: 4px;
+  border: none;
+  border-radius: 2px;
+  margin-top: 4px;
+}
+
+.shairport-progress::-webkit-progress-bar {
+  background-color: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.shairport-progress::-webkit-progress-value {
+  background-color: rgba(255, 255, 255, 0.8);
+  border-radius: 2px;
+}
+
+.shairport-time {
+  margin-top: 1px;
+}
+
+.shairport-paused {
+  font-style: italic;
+  margin-top: 2px;
+}

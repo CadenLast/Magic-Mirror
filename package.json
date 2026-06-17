@@ -84,7 +84,7 @@
 	"lint-staged": {
 		"*": "prettier --ignore-unknown --write",
 		"*.js": "eslint --fix",
-		"*.css": "stylelint --fix"
+		"*.css": "stylelint --fix --allow-empty-input"
 	},
 	"dependencies": {
 		"@fontsource/roboto": "^5.2.10",
