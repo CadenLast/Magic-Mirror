@@ -1,0 +1,3 @@
+[submodule "modules/MMM-ShairportMetadata"]
+	path = modules/MMM-ShairportMetadata
+	url = https://github.com/surekap/MMM-ShairportMetadata.git
