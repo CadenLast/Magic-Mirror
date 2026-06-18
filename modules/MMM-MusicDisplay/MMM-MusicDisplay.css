@@ -10,6 +10,12 @@
   gap: 8px;
 }
 
+.music-wrapper.live {
+  width: 500px;
+  height: 280px;
+  justify-content: center;
+}
+
 .music-wrapper.hidden {
   display: none;
 }
@@ -21,6 +27,8 @@
 }
 
 .music-art {
+  width: 170px !important;
+  height: 170px !important;
   border-radius: 6px;
   object-fit: cover;
   flex-shrink: 0;
@@ -29,7 +37,7 @@
 .music-info {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   overflow: hidden;
   flex: 1;
 }
@@ -46,7 +54,6 @@
 
 .marquee-scroll {
   animation: marquee-scroll linear infinite;
-  padding-right: 50px;
 }
 
 @keyframes marquee-scroll {
@@ -54,7 +61,7 @@
     transform: translateX(0);
   }
   100% {
-    transform: translateX(-100%);
+    transform: translateX(-50%);
   }
 }
 
@@ -96,6 +103,7 @@
   width: 700px;
   max-width: 90vw;
   margin-left: -100px;
+  margin-top: 24px;
   height: 180px;
   perspective: 800px;
   display: flex;

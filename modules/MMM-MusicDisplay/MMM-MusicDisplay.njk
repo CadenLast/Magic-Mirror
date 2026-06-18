@@ -1,5 +1,5 @@
 {% if mode === "live" %}
-  <div class="music-wrapper">
+  <div class="music-wrapper live">
     <div class="music-top">
       {% if showAlbumArt and albumArt %}
         <img class="music-art" src="{{ albumArt }}" width="{{ artSize }}" height="{{ artSize }}" />
@@ -25,7 +25,7 @@
         {% endif %}
       </div>
     </div>
-    {% if showProgress and hasProgress %}
+    {% if showProgress %}
       <div class="music-bottom">
         <progress class="music-progress"></progress>
         <div class="music-time xsmall dimmed"></div>
