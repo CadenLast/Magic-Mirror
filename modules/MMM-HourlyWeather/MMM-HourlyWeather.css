@@ -54,7 +54,7 @@
 
 .hourly-scroll {
   max-height: 600px;
-  overflow-y: auto;
+  overflow: hidden;
   scrollbar-width: none;
   -ms-overflow-style: none;
 }
