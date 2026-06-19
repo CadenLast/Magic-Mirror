@@ -282,7 +282,7 @@ Module.register("MMM-MusicDisplay", {
 			const dt = Math.max(now - lastTime, 1);
 			lastX = x;
 			lastTime = now;
-			const angleDelta = -dx * 0.3;
+			const angleDelta = dx * 0.3;
 			this.carouselAngle = (this.carouselAngle + angleDelta + 360) % 360;
 			const newVelocity = angleDelta / Math.max(dt / 50, 0.2);
 			this.dragVelocity = this.dragVelocity * 0.5 + newVelocity * 0.5;

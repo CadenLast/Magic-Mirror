@@ -68,10 +68,8 @@
   width: 100%;
 }
 
-.hourly-weather-table thead th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+.hourly-header-table {
+  margin-bottom: 0;
 }
 
 .hourly-weather-table th {
