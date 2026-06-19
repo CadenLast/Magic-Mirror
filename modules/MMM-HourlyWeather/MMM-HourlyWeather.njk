@@ -20,20 +20,22 @@
         </div>
       </div>
     {% endif %}
+    <table class="hourly-weather-table hourly-header-table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th></th>
+          <th>Temp</th>
+          <th>Feels</th>
+          <th>Hum</th>
+          <th>UV</th>
+          <th>Wind</th>
+          <th><span class="wi wi-raindrop"></span></th>
+        </tr>
+      </thead>
+    </table>
     <div class="hourly-scroll">
       <table class="hourly-weather-table">
-        <thead>
-          <tr>
-            <th>Time</th>
-            <th></th>
-            <th>Temp</th>
-            <th>Feels</th>
-            <th>Hum</th>
-            <th>UV</th>
-            <th>Wind</th>
-            <th><span class="wi wi-raindrop"></span></th>
-          </tr>
-        </thead>
         <tbody>
           {% for hour in hours %}
             <tr class="hourly-row">
