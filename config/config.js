@@ -45,7 +45,7 @@ let config = {
 			module: "alert",
 		},
 		// {
-			//TODO deadbolt module
+		// TODO deadbolt module
 		// },
 		// {
 		// 	TODO doorbell camera module

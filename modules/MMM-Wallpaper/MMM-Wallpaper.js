@@ -13,7 +13,11 @@ Module.register("MMM-Wallpaper", {
 		if (notification === "WALLPAPERS" && payload.length) {
 			this.wallpapers = payload;
 			this.pickRandom();
-			setInterval(() => this.pickRandom(), this.config.rotateInterval);
+			const msUntilNextHour = (60 - new Date().getMinutes()) * 60000 - new Date().getSeconds() * 1000 - new Date().getMilliseconds();
+			setTimeout(() => {
+				this.pickRandom();
+				setInterval(() => this.pickRandom(), 60 * 60 * 1000);
+			}, msUntilNextHour);
 		}
 	},
 
