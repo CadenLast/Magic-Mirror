@@ -4,7 +4,7 @@
 }
 
 .scores-wrapper {
-  height: 890px;
+  height: auto;
   display: flex;
   flex-direction: column;
 }
@@ -154,8 +154,9 @@
   display: flex;
   flex-direction: column;
   gap: 7px;
-  flex: 1;
-  min-height: 0;
+  flex: none;
+  /* Fits ~6 cards + the favorites divider, then scrolls. */
+  height: 450px;
   overflow-y: auto;
   scrollbar-width: none;
 }
