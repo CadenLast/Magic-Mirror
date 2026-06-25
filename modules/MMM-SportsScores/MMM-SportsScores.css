@@ -166,8 +166,7 @@
   flex-direction: column;
   gap: 7px;
   flex: none;
-  /* Fits ~6 cards + the favorites divider, then scrolls. */
-  height: 505px;
+  height: 500px;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -185,7 +184,7 @@
   transition: opacity 0.3s ease;
   transform: rotate(-90deg);
   pointer-events: none;
-  margin-top: -6px;
+  margin-top: 0px;
   margin-bottom: -10px;
 }
 
