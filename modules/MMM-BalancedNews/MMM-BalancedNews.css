@@ -5,6 +5,8 @@
 
 .MMM-BalancedNews .module-content {
   width: 100%;
+  /* Reserve the ticker's height so the layout doesn't shift while loading. */
+  min-height: 60px;
 }
 
 .balanced-news-wrapper {

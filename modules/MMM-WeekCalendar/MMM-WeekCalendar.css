@@ -1,3 +1,9 @@
+/* Reserve the module's height so the layout doesn't shift while loading.
+   Matches weather row + day header + the ~100px scrolling events area. */
+.MMM-WeekCalendar .module-content {
+  min-height: 280px;
+}
+
 .week-calendar-wrapper {
   display: flex;
   align-items: stretch;

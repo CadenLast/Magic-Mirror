@@ -3,6 +3,12 @@
   font-size: 120%;
 }
 
+/* Reserve the module's full height so the layout doesn't collapse/shift
+   while scores are loading. Matches header + games list + scroll indicator. */
+.MMM-SportsScores .module-content {
+  min-height: 610px;
+}
+
 .scores-wrapper {
   height: auto;
   display: flex;
@@ -156,7 +162,7 @@
   gap: 7px;
   flex: none;
   /* Fits ~6 cards + the favorites divider, then scrolls. */
-  height: 450px;
+  height: 470px;
   overflow-y: auto;
   scrollbar-width: none;
 }
