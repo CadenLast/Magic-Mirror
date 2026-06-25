@@ -11,7 +11,7 @@
 }
 
 .MMM-SportsScores {
-  margin-bottom: 10px !important;
+  margin-bottom: 2px !important;
 }
 
 .scores-wrapper {
@@ -167,7 +167,7 @@
   gap: 7px;
   flex: none;
   /* Fits ~6 cards + the favorites divider, then scrolls. */
-  height: 490px;
+  height: 500px;
   overflow-y: auto;
   scrollbar-width: none;
 }
