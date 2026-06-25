@@ -167,7 +167,7 @@
   gap: 7px;
   flex: none;
   /* Fits ~6 cards + the favorites divider, then scrolls. */
-  height: 510px;
+  height: 505px;
   overflow-y: auto;
   scrollbar-width: none;
 }
@@ -179,11 +179,14 @@
 .scores-scroll-indicator {
   text-align: center;
   font-size: 48px;
+  line-height: 0.6;
   color: #fff;
   opacity: 0;
   transition: opacity 0.3s ease;
   transform: rotate(-90deg);
   pointer-events: none;
+  margin-top: -10px;
+  margin-bottom: -20px;
 }
 
 .scores-scroll-indicator.visible {
