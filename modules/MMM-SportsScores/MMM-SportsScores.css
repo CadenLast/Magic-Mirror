@@ -7,7 +7,7 @@
 /* Reserve the module's full height so the layout doesn't collapse/shift
    while scores are loading. Matches header + games list + scroll indicator. */
 .MMM-SportsScores .module-content {
-  min-height: 685px;
+  min-height: 620px;
 }
 
 .MMM-SportsScores {
