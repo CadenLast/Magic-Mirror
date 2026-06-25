@@ -569,9 +569,14 @@ Module.register("MMM-SportsScores", {
 	},
 
 	scheduleRefresh () {
-		setInterval(() => {
+		const msUntilNextMinute = 60000 - (Date.now() % 60000);
+		setTimeout(() => {
 			this.fetchScores();
 			this.fetchFavorites();
-		}, this.config.refreshInterval);
+			setInterval(() => {
+				this.fetchScores();
+				this.fetchFavorites();
+			}, 60000);
+		}, msUntilNextMinute);
 	}
 });
