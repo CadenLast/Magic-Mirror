@@ -27,7 +27,7 @@
         <div class="scores-games">
           {% if favorites.length > 0 %}
             {% for game in favorites %}
-              <div class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
+              <div class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}" data-game-id="fav-{{ game.id }}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
                 <div class="scores-teams">
                   <div class="scores-team-row {{ 'scores-winner' if game.awayTeam.isWinner }}">
                     {% if showLogos and game.awayTeam.logo %}
@@ -55,7 +55,7 @@
             {% endif %}
           {% endif %}
           {% for game in games %}
-            <div class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
+            <div class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}" data-game-id="game-{{ game.id }}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
               <div class="scores-teams">
                 <div class="scores-team-row {{ 'scores-winner' if game.awayTeam.isWinner }}">
                   {% if showLogos and game.awayTeam.logo %}

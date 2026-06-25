@@ -1,6 +1,7 @@
 .MMM-SportsScores {
-  min-width: 336px;
-  font-size: 120%;
+  min-width: 280px;
+  max-width: 290px;
+  font-size: 110%;
 }
 
 /* Reserve the module's full height so the layout doesn't collapse/shift
@@ -188,7 +189,7 @@
 .scores-game {
   display: flex;
   align-items: center;
-  padding: 7px 12px;
+  padding: 6px 8px;
   border-radius: 5px;
   background: rgba(0, 0, 0, 0.2);
 }
@@ -216,9 +217,12 @@
 .scores-team-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 7px;
   color: var(--color-text);
-  font-size: 0.9em;
+  font-size: 0.85em;
+  transition:
+    color 0.3s ease,
+    font-weight 0.3s ease;
 }
 
 .scores-winner {
@@ -227,8 +231,8 @@
 }
 
 .scores-logo {
-  width: 22px;
-  height: 22px;
+  width: 18px;
+  height: 18px;
   object-fit: contain;
   flex-shrink: 0;
 }
@@ -248,13 +252,30 @@
   font-variant-numeric: tabular-nums;
 }
 
+.scores-score {
+  transition: opacity 0.3s ease;
+}
+
+.scores-score-changed {
+  animation: scores-fade-update 0.5s ease;
+}
+
+@keyframes scores-fade-update {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
 .scores-detail {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.75em;
+  gap: 4px;
+  font-size: 0.7em;
   color: var(--color-text);
-  min-width: 84px;
+  min-width: 70px;
   justify-content: flex-end;
   text-align: right;
 }

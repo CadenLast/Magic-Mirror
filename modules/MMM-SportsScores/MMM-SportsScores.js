@@ -435,17 +435,112 @@ Module.register("MMM-SportsScores", {
 
 	socketNotificationReceived (notification, payload) {
 		if (notification === "SCORES_DATA" && payload.requestId === this.requestId) {
+			const oldGames = this.games;
 			this.games = payload.games;
 			this.loaded = true;
 			this.error = null;
-			this.updateDom(0);
+			if (this._canPatch(oldGames, payload.games)) {
+				this._patchGames(oldGames, payload.games, "game");
+			} else {
+				this.updateDom(300);
+			}
 		} else if (notification === "SCORES_ERROR" && payload.requestId === this.requestId) {
 			this.error = payload.message;
 			this.loaded = true;
-			this.updateDom(0);
+			this.updateDom(300);
 		} else if (notification === "FAVORITES_DATA" && payload.requestId === this.favoritesRequestId) {
+			const oldFavorites = this.favoriteGames;
 			this.favoriteGames = payload.games;
-			this.updateDom(0);
+			if (this._canPatch(oldFavorites, payload.games)) {
+				this._patchGames(oldFavorites, payload.games, "fav");
+			} else {
+				this.updateDom(300);
+			}
+		}
+	},
+
+	_canPatch (oldGames, newGames) {
+		if (!oldGames || oldGames.length === 0) return false;
+		if (oldGames.length !== newGames.length) return false;
+		for (let i = 0; i < oldGames.length; i++) {
+			if (oldGames[i].id !== newGames[i].id) return false;
+		}
+		return true;
+	},
+
+	_prepareGame (game) {
+		const g = {
+			...game,
+			homeTeam: { ...game.homeTeam },
+			awayTeam: { ...game.awayTeam }
+		};
+		if (g.state === "post" || g.state === "in") {
+			const hs = parseInt(g.homeTeam.score) || 0;
+			const as = parseInt(g.awayTeam.score) || 0;
+			g.homeTeam.isWinner = hs > as;
+			g.awayTeam.isWinner = as > hs;
+		}
+		if (g.state === "pre" && g.eventDate) {
+			const fmt = config.timeFormat === 24 ? "HH:mm" : "h:mm A";
+			g.displayTime = moment(g.eventDate).format(fmt);
+		} else {
+			g.displayTime = g.detail;
+		}
+		return g;
+	},
+
+	_patchGames (oldGames, newGames, prefix) {
+		const wrapper = document.getElementById(this.identifier);
+		if (!wrapper) return;
+		for (let i = 0; i < newGames.length; i++) {
+			const oldGame = this._prepareGame(oldGames[i]);
+			const newGame = this._prepareGame(newGames[i]);
+			const el = wrapper.querySelector(`[data-game-id="${prefix}-${newGame.id}"]`);
+			if (!el) continue;
+			this._patchGameElement(el, oldGame, newGame);
+		}
+	},
+
+	_patchGameElement (el, oldGame, newGame) {
+		const rows = el.querySelectorAll(".scores-team-row");
+		if (rows.length < 2) return;
+
+		this._patchTeamScore(rows[0], oldGame.awayTeam, newGame.awayTeam, oldGame.state, newGame.state);
+		this._patchTeamScore(rows[1], oldGame.homeTeam, newGame.homeTeam, oldGame.state, newGame.state);
+
+		rows[0].classList.toggle("scores-winner", !!newGame.awayTeam.isWinner);
+		rows[1].classList.toggle("scores-winner", !!newGame.homeTeam.isWinner);
+
+		if (oldGame.displayTime !== newGame.displayTime) {
+			const spans = el.querySelectorAll(".scores-detail span");
+			const detailSpan = spans[spans.length - 1];
+			if (detailSpan) {
+				detailSpan.classList.add("scores-score-changed");
+				detailSpan.textContent = newGame.displayTime;
+				setTimeout(() => detailSpan.classList.remove("scores-score-changed"), 500);
+			}
+		}
+
+		const hasLiveDot = !!el.querySelector(".scores-live-dot");
+		if (newGame.state === "in" && !hasLiveDot) {
+			const dot = document.createElement("span");
+			dot.className = "scores-live-dot";
+			el.querySelector(".scores-detail").prepend(dot);
+		} else if (newGame.state !== "in" && hasLiveDot) {
+			el.querySelector(".scores-live-dot").remove();
+		}
+
+		el.classList.toggle("scores-game-live", newGame.state === "in");
+	},
+
+	_patchTeamScore (row, oldTeam, newTeam, oldState, newState) {
+		const scoreEl = row.querySelector(".scores-score");
+		if (!scoreEl) return;
+		const newDisplay = newState === "pre" ? "–" : newTeam.score;
+		if (scoreEl.textContent.trim() !== String(newDisplay)) {
+			scoreEl.classList.add("scores-score-changed");
+			scoreEl.textContent = newDisplay;
+			setTimeout(() => scoreEl.classList.remove("scores-score-changed"), 800);
 		}
 	},
 
