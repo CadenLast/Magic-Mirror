@@ -1,3 +1,9 @@
+/* Reserve the module's height so the layout doesn't shift while loading.
+   Matches current conditions + header + the ~600px scrolling hourly list. */
+.MMM-HourlyWeather .module-content {
+  min-height: 785px;
+}
+
 .hourly-weather-wrapper {
   font-size: 19px;
   color: #fff;

@@ -3,6 +3,12 @@
   align-self: flex-end;
 }
 
+/* Reserve the module's height so the layout doesn't shift while loading.
+   Matches the ~425px scrolling package list + scroll indicator. */
+.MMM-PackageTracking .module-content {
+  min-height: 440px;
+}
+
 .pkg-wrapper {
   display: flex;
   flex-direction: column;
