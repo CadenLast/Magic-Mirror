@@ -35,6 +35,8 @@ Module.register("MMM-Radar", {
 			if (this._resetTimer) clearTimeout(this._resetTimer);
 			this._resetTimer = setTimeout(() => {
 				if (this.map) {
+					this._resetting = true;
+					this.map.once("moveend", () => { this._resetting = false; });
 					this.map.setView([this.config.lat, this.config.lon], this.config.zoom, { animate: true });
 				}
 			}, config.resetTimeout);
@@ -79,7 +81,9 @@ Module.register("MMM-Radar", {
 
 		L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png").addTo(this.map);
 
-		this.map.on("zoomend moveend", () => document.dispatchEvent(new Event("mm-activity")));
+		this.map.on("zoomend moveend", () => {
+			if (!this._resetting) document.dispatchEvent(new Event("mm-activity"));
+		});
 
 		this.addCities();
 		this.fetchRadarData();
