@@ -281,7 +281,7 @@
   gap: 4px;
   font-size: 0.7em;
   color: var(--color-text);
-  min-width: 70px;
+  min-width: 85px;
   justify-content: flex-end;
   text-align: right;
 }
