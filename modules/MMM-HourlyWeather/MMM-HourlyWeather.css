@@ -74,11 +74,10 @@
   width: 100%;
 }
 
-.hourly-header-table {
-  margin-bottom: 0;
-}
-
 .hourly-weather-table th {
+  position: sticky;
+  top: 0;
+  background: var(--color-background);
   font-size: 15px;
   text-transform: uppercase;
   letter-spacing: 1px;
