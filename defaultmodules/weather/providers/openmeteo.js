@@ -293,14 +293,31 @@ class OpenMeteoProvider {
 		return `${this.config.apiBase}/forecast?${this.#getQueryParameters()}`;
 	}
 
+	// timezone: "auto" + timeformat: "unixtime" makes Open-Meteo return each timestamp
+	// as the location's local wall-clock reading encoded as if it were UTC. Reading
+	// that raw value as a real instant shifts it by the location's UTC offset, which
+	// can push daily/hourly records into the wrong calendar day for callers that
+	// compare dates in local time (e.g. MMM-WeekCalendar). Re-anchor it here so the
+	// resulting Date's local fields match what Open-Meteo actually reported.
+	#toLocalDate (unixSeconds) {
+		const reading = new Date(unixSeconds * 1000);
+		return new Date(
+			reading.getUTCFullYear(),
+			reading.getUTCMonth(),
+			reading.getUTCDate(),
+			reading.getUTCHours(),
+			reading.getUTCMinutes(),
+			reading.getUTCSeconds()
+		);
+	}
+
 	#transposeDataMatrix (data) {
 		return data.time.map((_, index) => Object.keys(data).reduce((row, key) => {
 			const value = data[key][index];
 			return {
 				...row,
 				// Convert Unix timestamps to Date objects
-				// timezone: "auto" returns times already in location timezone
-				[key]: ["time", "sunrise", "sunset"].includes(key) ? new Date(value * 1000) : value
+				[key]: ["time", "sunrise", "sunset"].includes(key) ? this.#toLocalDate(value) : value
 			};
 		}, {}));
 	}
@@ -327,7 +344,7 @@ class OpenMeteoProvider {
 		}
 
 		if (data.current_weather) {
-			data.current_weather.time = new Date(data.current_weather.time * 1000);
+			data.current_weather.time = this.#toLocalDate(data.current_weather.time);
 		}
 
 		return data;
