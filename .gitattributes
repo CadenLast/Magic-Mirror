@@ -54,3 +54,32 @@ Dockerfile* text
 *.7z binary
 *.ttf binary
 *.pyc binary
+
+# Personal customizations to these vendored defaultmodules files have already
+# diverged from upstream (origin = MagicMirrorOrg/MagicMirror). On `git merge`/
+# `git pull` from origin, always keep our version instead of taking upstream's,
+# so future upstream commits to these files don't clobber local changes.
+# Requires local setup (not carried by this file alone):
+#   git config merge.ours.driver true
+defaultmodules/calendar/calendarfetcher.js merge=ours
+defaultmodules/calendar/calendarfetcherutils.js merge=ours
+defaultmodules/clock/clock_styles.css merge=ours
+defaultmodules/compliments/compliments.js merge=ours
+defaultmodules/newsfeed/newsfeed.js merge=ours
+defaultmodules/newsfeed/newsfeed.njk merge=ours
+defaultmodules/newsfeed/newsfeedfetcher.js merge=ours
+defaultmodules/newsfeed/node_helper.js merge=ours
+defaultmodules/updatenotification/git_helper.js merge=ours
+defaultmodules/updatenotification/node_helper.js merge=ours
+defaultmodules/updatenotification/update_helper.js merge=ours
+defaultmodules/weather/providers/buienradar.js merge=ours
+defaultmodules/weather/providers/envcanada.js merge=ours
+defaultmodules/weather/providers/openmeteo.js merge=ours
+defaultmodules/weather/providers/openweathermap.js merge=ours
+defaultmodules/weather/providers/pirateweather.js merge=ours
+defaultmodules/weather/providers/smhi.js merge=ours
+defaultmodules/weather/providers/ukmetofficedatahub.js merge=ours
+defaultmodules/weather/providers/weatherflow.js merge=ours
+defaultmodules/weather/providers/weathergov.js merge=ours
+defaultmodules/weather/weather.css merge=ours
+defaultmodules/weather/weatherutils.js merge=ours

@@ -105,6 +105,9 @@ class OpenMeteoProvider {
 		this.fetcher = null;
 		this.onDataCallback = null;
 		this.onErrorCallback = null;
+		// Resolved lazily and cached once found; api.weather.gov is US-only, so this
+		// stays null (and enrichment silently no-ops) for other locations.
+		this.observationStationId = null;
 	}
 
 	async initialize () {
@@ -174,7 +177,7 @@ class OpenMeteoProvider {
 		this.fetcher.on("response", async (response) => {
 			try {
 				const data = await response.json();
-				this.#handleResponse(data);
+				await this.#handleResponse(data);
 			} catch (error) {
 				Log.error("[openmeteo] Failed to parse JSON:", error);
 				if (this.onErrorCallback) {
@@ -193,7 +196,7 @@ class OpenMeteoProvider {
 		});
 	}
 
-	#handleResponse (data) {
+	async #handleResponse (data) {
 		const parsedData = this.#parseWeatherApiResponse(data);
 
 		if (!parsedData) {
@@ -213,9 +216,11 @@ class OpenMeteoProvider {
 					weatherData = this.#generateWeatherDayFromCurrentWeather(parsedData);
 					break;
 				case "forecast":
-				case "daily":
-					weatherData = this.#generateWeatherObjectsFromForecast(parsedData);
+				case "daily": {
+					const observedPastPrecip = await this.#fetchObservedPastPrecip(parsedData);
+					weatherData = this.#generateWeatherObjectsFromForecast(parsedData, observedPastPrecip);
 					break;
+				}
 				case "hourly":
 					weatherData = this.#generateWeatherObjectsFromHourly(parsedData);
 					break;
@@ -235,6 +240,97 @@ class OpenMeteoProvider {
 					translationKey: "MODULE_ERROR_UNSPECIFIED"
 				});
 			}
+		}
+	}
+
+	// Open-Meteo's past_days precipitation is model output, not an observation, and can
+	// be badly wrong for localized rain events (verified against KIKV station data for
+	// this project's coordinates: Open-Meteo reported 0mm on a day the station measured
+	// ~27mm before midnight). For US locations, replace it with real NWS station totals.
+	async #fetchObservedPastPrecip (parsedData) {
+		const pastDayCount = this.config.pastDays;
+		const days = parsedData.daily;
+
+		if (!pastDayCount || !days || days.length <= pastDayCount) {
+			return null;
+		}
+
+		try {
+			if (!this.observationStationId) {
+				this.observationStationId = await this.#resolveObservationStation();
+				if (!this.observationStationId) {
+					return null;
+				}
+			}
+
+			const start = days[0].time;
+			const end = days[pastDayCount].time; // local midnight of "today" - exclusive upper bound
+			const url = `https://api.weather.gov/stations/${this.observationStationId}/observations?start=${start.toISOString()}&end=${end.toISOString()}`;
+			const response = await this.#fetchNws(url);
+			if (!response) {
+				return null;
+			}
+
+			const observations = (await response.json()).features ?? [];
+			const dailyTotals = new Array(pastDayCount).fill(null);
+			const dailyHasObservation = new Array(pastDayCount).fill(false);
+
+			for (const feature of observations) {
+				const props = feature.properties;
+				if (!props?.timestamp) continue;
+
+				const obsTime = new Date(props.timestamp);
+				const dayIndex = days.findIndex((day, i) => i < pastDayCount && obsTime >= day.time && obsTime < days[i + 1].time);
+				if (dayIndex === -1) continue;
+
+				dailyHasObservation[dayIndex] = true;
+				const amount = props.precipitationLastHour?.value;
+				if (amount != null) {
+					dailyTotals[dayIndex] = (dailyTotals[dayIndex] ?? 0) + amount;
+				}
+			}
+
+			// A day the station reported observations for, but none carried precipitation,
+			// genuinely had none - only fall back to Open-Meteo's model value for days with
+			// no observations at all (e.g. a station outage).
+			for (let i = 0; i < pastDayCount; i++) {
+				if (dailyHasObservation[i] && dailyTotals[i] === null) {
+					dailyTotals[i] = 0;
+				}
+			}
+
+			return dailyTotals;
+		} catch (error) {
+			Log.debug("[openmeteo] Could not fetch observed precipitation from NWS:", error.message);
+			return null;
+		}
+	}
+
+	async #resolveObservationStation () {
+		const pointsResponse = await this.#fetchNws(`https://api.weather.gov/points/${this.config.lat},${this.config.lon}`);
+		if (!pointsResponse) return null;
+
+		const stationsUrl = (await pointsResponse.json()).properties?.observationStations;
+		if (!stationsUrl) return null;
+
+		const stationsResponse = await this.#fetchNws(stationsUrl);
+		if (!stationsResponse) return null;
+
+		const stationsData = await stationsResponse.json();
+		return stationsData.features?.[0]?.properties?.stationIdentifier ?? null;
+	}
+
+	async #fetchNws (url) {
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), 15000);
+		try {
+			const response = await fetch(url, {
+				signal: controller.signal,
+				headers: { "User-Agent": "MagicMirror", Accept: "application/geo+json" }
+			});
+			return response.ok ? response : null;
+		} finally {
+			clearTimeout(timeoutId);
 		}
 	}
 
@@ -299,7 +395,6 @@ class OpenMeteoProvider {
 			return {
 				...row,
 				// Convert Unix timestamps to Date objects
-				// timezone: "auto" returns times already in location timezone
 				[key]: ["time", "sunrise", "sunset"].includes(key) ? new Date(value * 1000) : value
 			};
 		}, {}));
@@ -459,23 +554,26 @@ class OpenMeteoProvider {
 		return current;
 	}
 
-	#generateWeatherObjectsFromForecast (parsedData) {
-		return parsedData.daily.map((weather) => ({
-			date: weather.time,
-			windSpeed: weather.windspeed_10m_max,
-			windFromDirection: weather.winddirection_10m_dominant,
-			sunrise: weather.sunrise,
-			sunset: weather.sunset,
-			temperature: parseFloat((weather.temperature_2m_max + weather.temperature_2m_min) / 2),
-			minTemperature: parseFloat(weather.temperature_2m_min),
-			maxTemperature: parseFloat(weather.temperature_2m_max),
-			weatherType: this.#convertWeatherType(weather.weathercode, true),
-			rain: weather.rain_sum != null ? parseFloat(weather.rain_sum) : null,
-			snow: weather.snowfall_sum != null ? parseFloat(weather.snowfall_sum * 10) : null,
-			precipitationAmount: weather.precipitation_sum != null ? parseFloat(weather.precipitation_sum) : null,
-			precipitationProbability: weather.precipitation_hours != null ? parseFloat(weather.precipitation_hours * 100 / 24) : null,
-			uvIndex: weather.uv_index_max != null ? parseFloat(weather.uv_index_max) : null
-		}));
+	#generateWeatherObjectsFromForecast (parsedData, observedPastPrecip) {
+		return parsedData.daily.map((weather, index) => {
+			const observed = observedPastPrecip?.[index];
+			return {
+				date: weather.time,
+				windSpeed: weather.windspeed_10m_max,
+				windFromDirection: weather.winddirection_10m_dominant,
+				sunrise: weather.sunrise,
+				sunset: weather.sunset,
+				temperature: parseFloat((weather.temperature_2m_max + weather.temperature_2m_min) / 2),
+				minTemperature: parseFloat(weather.temperature_2m_min),
+				maxTemperature: parseFloat(weather.temperature_2m_max),
+				weatherType: this.#convertWeatherType(weather.weathercode, true),
+				rain: weather.rain_sum != null ? parseFloat(weather.rain_sum) : null,
+				snow: weather.snowfall_sum != null ? parseFloat(weather.snowfall_sum * 10) : null,
+				precipitationAmount: observed != null ? observed : (weather.precipitation_sum != null ? parseFloat(weather.precipitation_sum) : null),
+				precipitationProbability: weather.precipitation_hours != null ? parseFloat(weather.precipitation_hours * 100 / 24) : null,
+				uvIndex: weather.uv_index_max != null ? parseFloat(weather.uv_index_max) : null
+			};
+		});
 	}
 
 	#generateWeatherObjectsFromHourly (parsedData) {
