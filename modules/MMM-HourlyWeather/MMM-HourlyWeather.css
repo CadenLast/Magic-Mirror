@@ -71,7 +71,14 @@
 
 .hourly-weather-table {
   border-collapse: collapse;
-  width: 100%;
+  table-layout: fixed;
+}
+
+/* Overrides the region's default "table { width: 100% }" so the table
+   shrinks to the sum of the fixed column widths below instead of
+   stretching to fill the module region. */
+.hourly-weather-wrapper .hourly-weather-table {
+  width: auto;
 }
 
 .hourly-header-table {
@@ -99,33 +106,44 @@
 }
 
 .hourly-time {
+  width: 65px;
   opacity: 0.6;
   text-align: left;
   white-space: nowrap;
 }
 
 .hourly-icon {
+  width: 30px;
   font-size: 22px;
   opacity: 0.8;
 }
 
 .hourly-temp {
+  width: 50px;
   font-weight: bold;
 }
 
 .hourly-feels {
+  width: 55px;
   opacity: 0.5;
 }
 
 .hourly-precip {
+  width: 50px;
   opacity: 0.7;
 }
 
 .hourly-humidity {
+  width: 50px;
   opacity: 0.7;
 }
 
+.hourly-uv {
+  width: 45px;
+}
+
 .hourly-wind {
+  width: 75px;
   white-space: nowrap;
 }
 
