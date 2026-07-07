@@ -104,6 +104,9 @@ let config = {
 					},
 					{
 						url: "https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics",
+					},
+					{
+						url: "${GOOGLE_CALENDAR_BIRTHDAY_PRIVATE_URL}"
 					}
 				]
 			}
