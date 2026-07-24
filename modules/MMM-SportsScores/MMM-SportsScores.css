@@ -66,11 +66,33 @@
   cursor: default;
 }
 
+.scores-header-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.scores-header-left {
+  flex: 1 1 56%;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.scores-header-right {
+  flex: 1 1 44%;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .scores-sport-menu {
   position: relative;
   display: flex;
   justify-content: center;
-  margin-bottom: 14px;
 }
 
 .scores-sport-toggle {
@@ -164,7 +186,6 @@
 .standings-view-toggle {
   display: flex;
   justify-content: center;
-  margin-bottom: 8px;
   cursor: pointer;
   user-select: none;
 }
@@ -200,6 +221,9 @@
   color: var(--color-text);
   opacity: 0.6;
   margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .standings-row {
@@ -291,7 +315,7 @@
   transition: opacity 0.3s ease;
   transform: rotate(-90deg);
   pointer-events: none;
-  margin-top: 0px;
+  margin-top: 0;
   margin-bottom: -10px;
 }
 
@@ -305,6 +329,61 @@
   padding: 9px 10px;
   border-radius: 5px;
   background: rgba(0, 0, 0, 0.2);
+}
+
+.scores-game-has-situation {
+  display: grid;
+  grid-template-columns: 1fr 34px auto;
+  grid-template-rows: auto auto;
+  column-gap: 6px;
+  row-gap: 4px;
+  align-items: center;
+}
+
+.scores-game-has-situation .scores-teams,
+.scores-game-has-situation .scores-detail,
+.scores-game-has-situation .scores-situation,
+.scores-game-has-situation .scores-detail-time {
+  display: contents;
+}
+
+.scores-game-has-situation .scores-team-row:first-child {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.scores-game-has-situation .scores-team-row:last-child {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+/* Icon column (bases diamond / live dot) shares one fixed-width grid column
+   so both rows' icons line up, independent of how wide their text is. */
+.scores-game-has-situation .scores-bases {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+}
+
+.scores-game-has-situation .scores-live-dot {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: center;
+}
+
+/* Text column shares its own grid column so "2 Outs" and the inning/time
+   text start at the same x regardless of the icon's width. */
+.scores-game-has-situation .scores-outs,
+.scores-game-has-situation .scores-down-distance {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+}
+
+.scores-game-has-situation .scores-detail-time-text {
+  grid-column: 3;
+  grid-row: 2;
+  justify-self: end;
 }
 
 .scores-game-clickable {
@@ -327,10 +406,61 @@
   flex: 1;
 }
 
+.scores-situation {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 22px;
+  opacity: 0.85;
+}
+
+.scores-bases {
+  position: relative;
+  width: 34px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.scores-base {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  transform: rotate(45deg);
+}
+
+.scores-base-on {
+  background: #f39c12;
+  border-color: #f39c12;
+}
+
+.scores-base-second {
+  top: 2px;
+  left: 13px;
+}
+
+.scores-base-third {
+  top: 14px;
+  left: 2px;
+}
+
+.scores-base-first {
+  top: 14px;
+  left: 24px;
+}
+
+.scores-outs,
+.scores-down-distance {
+  white-space: nowrap;
+}
+
 .scores-team-row {
   display: flex;
   align-items: center;
   gap: 7px;
+  min-height: 22px;
   color: var(--color-text);
   font-size: 0.85em;
   transition:
@@ -352,6 +482,16 @@
 
 .scores-abbr {
   flex: 1;
+}
+
+/* Cap the team name to the widest abbreviation (4 letters, e.g. "UTAH") so
+   the score sits at a fixed spot on the left instead of stretching to the
+   row's far edge, keeping scores lined up across every sport. */
+.scores-team-row .scores-abbr {
+  flex: 0 0 4ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .scores-rank {
@@ -384,13 +524,21 @@
 
 .scores-detail {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
   font-size: 0.7em;
   color: var(--color-text);
   min-width: 85px;
-  justify-content: flex-end;
   text-align: right;
+}
+
+.scores-detail-time {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 22px;
+  justify-content: flex-end;
 }
 
 .scores-live-dot {

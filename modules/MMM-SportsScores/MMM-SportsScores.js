@@ -204,35 +204,36 @@ Module.register("MMM-SportsScores", {
 					e.stopPropagation();
 					this.standingsView = this.standingsView === "league" ? "division" : "league";
 					this.updateStandingsViewLabel();
-					this.dimContent();
+					this.dimStandingsColumn();
 					this.fetchStandings();
 					this.broadcastInteraction();
 				});
 			}
 
-			const bindScrollIndicator = (listEl, indicatorEl) => {
-				if (!listEl || !indicatorEl) return null;
-				const update = () => {
-					const canScroll = listEl.scrollHeight > listEl.clientHeight;
-					const atBottom = listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - 2;
-					indicatorEl.classList.toggle("visible", canScroll && !atBottom);
-				};
-				listEl.addEventListener("scroll", () => {
-					update();
-					this.broadcastInteraction();
-				});
-				return update;
-			};
-
-			const gamesUpdate = bindScrollIndicator(dom.querySelector(".scores-games"), dom.querySelector(".scores-games-container .scores-scroll-indicator"));
-			const standingsUpdate = bindScrollIndicator(dom.querySelector(".standings-list"), dom.querySelector(".standings-container .scores-scroll-indicator"));
+			const gamesUpdate = this.bindScrollIndicator(dom.querySelector(".scores-games"), dom.querySelector(".scores-games-container .scores-scroll-indicator"));
+			this._gamesScrollUpdate = gamesUpdate;
+			this._standingsScrollUpdate = this.bindScrollIndicator(dom.querySelector(".standings-list"), dom.querySelector(".standings-container .scores-scroll-indicator"));
 			this._updateScrollIndicator = () => {
-				if (gamesUpdate) gamesUpdate();
-				if (standingsUpdate) standingsUpdate();
+				if (this._gamesScrollUpdate) this._gamesScrollUpdate();
+				if (this._standingsScrollUpdate) this._standingsScrollUpdate();
 			};
 
 			return dom;
 		});
+	},
+
+	bindScrollIndicator (listEl, indicatorEl) {
+		if (!listEl || !indicatorEl) return null;
+		const update = () => {
+			const canScroll = listEl.scrollHeight > listEl.clientHeight;
+			const atBottom = listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - 2;
+			indicatorEl.classList.toggle("visible", canScroll && !atBottom);
+		};
+		listEl.addEventListener("scroll", () => {
+			update();
+			this.broadcastInteraction();
+		});
+		return update;
 	},
 
 	updateDateLabel () {
@@ -261,12 +262,84 @@ Module.register("MMM-SportsScores", {
 		label.textContent = this.standingsView === "division" ? "Division" : "League";
 	},
 
+	_escapeHtml (value) {
+		return String(value).replace(/[&<>"']/g, (c) => ({
+			"&": "&amp;",
+			"<": "&lt;",
+			">": "&gt;",
+			"\"": "&quot;",
+			"'": "&#39;"
+		}[c]));
+	},
+
+	renderStandingsContent () {
+		if (this.standingsError) {
+			return `<div class="dimmed small scores-empty">Unable to load standings</div>`;
+		}
+		if (!this.standingsLoaded) {
+			return `<div class="dimmed small scores-empty">Loading standings&hellip;</div>`;
+		}
+		if (!this.standingsGroups || this.standingsGroups.length === 0) {
+			return `<div class="dimmed small scores-empty">No standings available</div>`;
+		}
+
+		const groupsHtml = this.standingsGroups.map((group) => {
+			const teamsHtml = group.teams.map((team) => {
+				const logo = (this.config.showLogos && team.logo)
+					? `<img class="scores-logo" src="${this._escapeHtml(team.logo)}" alt="" />`
+					: "";
+				const rankOrSeed = this._escapeHtml(this.isRankingsView ? team.rank : team.seed);
+				const extra = this.isRankingsView
+					? ""
+					: `<span class="standings-stat">${this._escapeHtml(team.stat)}</span>
+					   <span class="standings-gb">${this._escapeHtml(team.gamesBehind)}</span>`;
+				return `<div class="standings-row">
+					<span class="standings-rank">${rankOrSeed}</span>
+					${logo}
+					<span class="scores-abbr">${this._escapeHtml(team.abbreviation)}</span>
+					<span class="standings-record">${this._escapeHtml(team.record)}</span>
+					${extra}
+				</div>`;
+			}).join("");
+
+			return `<div class="standings-group">
+				<div class="standings-group-header">${this._escapeHtml(group.name)}</div>
+				${teamsHtml}
+			</div>`;
+		}).join("");
+
+		return `<div class="scores-games-container standings-container">
+			<div class="scores-games standings-list">${groupsHtml}</div>
+			<div class="scores-scroll-indicator">&lsaquo;</div>
+		</div>`;
+	},
+
+	updateStandingsColumn () {
+		const wrapper = document.getElementById(this.identifier);
+		const column = wrapper ? wrapper.querySelector(".standings-column") : null;
+		if (!column) {
+			this.updateDom(300);
+			return;
+		}
+		column.innerHTML = this.renderStandingsContent();
+		column.style.opacity = "1";
+		this._standingsScrollUpdate = this.bindScrollIndicator(column.querySelector(".standings-list"), column.querySelector(".standings-container .scores-scroll-indicator"));
+		if (this._standingsScrollUpdate) this._standingsScrollUpdate();
+	},
+
 	dimContent () {
 		const wrapper = document.getElementById(this.identifier);
 		if (!wrapper) return;
 		wrapper.querySelectorAll(".scores-games-container, .standings-container, .scores-empty").forEach((el) => {
 			el.style.opacity = "0.3";
 		});
+	},
+
+	dimStandingsColumn () {
+		const wrapper = document.getElementById(this.identifier);
+		if (!wrapper) return;
+		const column = wrapper.querySelector(".standings-column");
+		if (column) column.style.opacity = "0.3";
 	},
 
 
@@ -511,11 +584,11 @@ Module.register("MMM-SportsScores", {
 			this.isRankingsView = payload.isRankings;
 			this.standingsLoaded = true;
 			this.standingsError = null;
-			this.updateDom(300);
+			this.updateStandingsColumn();
 		} else if (notification === "STANDINGS_ERROR" && payload.requestId === this.standingsRequestId) {
 			this.standingsError = payload.message;
 			this.standingsLoaded = true;
-			this.updateDom(300);
+			this.updateStandingsColumn();
 		}
 	},
 
@@ -524,8 +597,15 @@ Module.register("MMM-SportsScores", {
 		if (oldGames.length !== newGames.length) return false;
 		for (let i = 0; i < oldGames.length; i++) {
 			if (oldGames[i].id !== newGames[i].id) return false;
+			if (!this._situationEqual(oldGames[i].situation, newGames[i].situation)) return false;
 		}
 		return true;
+	},
+
+	_situationEqual (a, b) {
+		if (!a && !b) return true;
+		if (!a || !b) return false;
+		return JSON.stringify(a) === JSON.stringify(b);
 	},
 
 	_prepareGame (game) {

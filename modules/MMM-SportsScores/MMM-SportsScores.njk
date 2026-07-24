@@ -1,3 +1,20 @@
+{% macro situation(game) %}
+  {% if game.state == 'in' and game.situation %}
+    <div class="scores-situation">
+      {% if game.situation.type == 'baseball' %}
+        <span class="scores-bases">
+          <span class="scores-base scores-base-second {{ 'scores-base-on' if game.situation.onSecond }}"></span>
+          <span class="scores-base scores-base-third {{ 'scores-base-on' if game.situation.onThird }}"></span>
+          <span class="scores-base scores-base-first {{ 'scores-base-on' if game.situation.onFirst }}"></span>
+        </span>
+        <span class="scores-outs">{{ game.situation.outs }} Out{{ 's' if game.situation.outs != 1 }}</span>
+      {% elif game.situation.type == 'football' %}
+        <span class="scores-down-distance">{{ game.situation.text }}</span>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endmacro %}
+
 <div class="scores-wrapper">
   {% if loaded %}
     <div class="scores-date-nav">
@@ -6,15 +23,26 @@
       <span class="scores-chevron scores-next {{ 'scores-disabled' if not canGoForward }}">&rsaquo;</span>
     </div>
 
-    <div class="scores-sport-menu">
-      <span class="scores-sport-toggle">
-        <span class="scores-sport-label">{{ sports[activeSportIndex].icon }} {{ sports[activeSportIndex].label }}</span>
-        <span class="scores-hamburger">&#9776;</span>
-      </span>
-      <div class="scores-sport-dropdown">
-        {% for sport in sports %}
-          <span class="scores-sport-option {{ 'scores-sport-option-active' if loop.index0 == activeSportIndex }}" data-index="{{ loop.index0 }}">{{ sport.icon }} {{ sport.label }}</span>
-        {% endfor %}
+    <div class="scores-header-row">
+      <div class="scores-header-left">
+        <div class="scores-sport-menu">
+          <span class="scores-sport-toggle">
+            <span class="scores-sport-label">{{ sports[activeSportIndex].icon }} {{ sports[activeSportIndex].label }}</span>
+            <span class="scores-hamburger">&#9776;</span>
+          </span>
+          <div class="scores-sport-dropdown">
+            {% for sport in sports %}
+              <span class="scores-sport-option {{ 'scores-sport-option-active' if loop.index0 == activeSportIndex }}" data-index="{{ loop.index0 }}">{{ sport.icon }} {{ sport.label }}</span>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="scores-header-right">
+        {% if not isRankings %}
+          <div class="standings-view-toggle">
+            <span class="standings-view-label">{{ 'Division' if standingsView == 'division' else 'League' }}</span>
+          </div>
+        {% endif %}
       </div>
     </div>
 
@@ -30,7 +58,7 @@
               {% if favorites.length > 0 %}
                 {% for game in favorites %}
                   <div
-                    class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}"
+                    class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }} {{ 'scores-game-has-situation' if game.state == 'in' and game.situation }}"
                     data-game-id="fav-{{ game.id }}"
                     data-url="{{ game.url }}"
                     data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}"
@@ -52,8 +80,11 @@
                       </div>
                     </div>
                     <div class="scores-detail">
-                      {% if game.state == 'in' %}<span class="scores-live-dot"></span>{% endif %}
-                      <span>{{ game.displayTime }}</span>
+                      {{ situation(game) }}
+                      <div class="scores-detail-time">
+                        {% if game.state == 'in' %}<span class="scores-live-dot"></span>{% endif %}
+                        <span class="scores-detail-time-text">{{ game.displayTime }}</span>
+                      </div>
                     </div>
                   </div>
                 {% endfor %}
@@ -63,7 +94,7 @@
               {% endif %}
               {% for game in games %}
                 <div
-                  class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}"
+                  class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }} {{ 'scores-game-has-situation' if game.state == 'in' and game.situation }}"
                   data-game-id="game-{{ game.id }}"
                   data-url="{{ game.url }}"
                   data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}"
@@ -85,8 +116,11 @@
                     </div>
                   </div>
                   <div class="scores-detail">
-                    {% if game.state == 'in' %}<span class="scores-live-dot"></span>{% endif %}
-                    <span>{{ game.displayTime }}</span>
+                    {{ situation(game) }}
+                    <div class="scores-detail-time">
+                      {% if game.state == 'in' %}<span class="scores-live-dot"></span>{% endif %}
+                      <span class="scores-detail-time-text">{{ game.displayTime }}</span>
+                    </div>
                   </div>
                 </div>
               {% endfor %}
@@ -97,11 +131,6 @@
       </div>
 
       <div class="standings-column">
-        {% if not isRankings %}
-          <div class="standings-view-toggle">
-            <span class="standings-view-label">{{ 'Division' if standingsView == 'division' else 'League' }}</span>
-          </div>
-        {% endif %}
         {% if standingsError %}
           <div class="dimmed small scores-empty">Unable to load standings</div>
         {% elif not standingsLoaded %}
