@@ -28,15 +28,6 @@ module.exports = NodeHelper.create({
 			const data = await response.json();
 			let games = this.parseGames(data, sport, league);
 
-			// TEMP TEST: force the first baseball game into a bases-loaded, 2-out state so the
-			// situation indicator can be checked visually without waiting for a live game. Remove
-			// this block once verified.
-			if (sport === "baseball" && games.length > 0) {
-				games[0].state = "in";
-				games[0].detail = "Bot 7th";
-				games[0].situation = { type: "baseball", outs: 2, onFirst: true, onSecond: true, onThird: true };
-			}
-
 			if (top25) {
 				games = games.filter((g) => g.homeRank <= 25 || g.awayRank <= 25);
 			}
@@ -90,27 +81,6 @@ module.exports = NodeHelper.create({
 		});
 
 		await Promise.all(fetches);
-
-		// TEMP TEST: inject a synthetic live NFL favorite game (real games don't start until
-		// August) so the football situation indicator and favorites styling can be checked
-		// visually. Remove this block once verified.
-		allGames.unshift({
-			id: "test-fav-nfl",
-			sport: "football",
-			league: "nfl",
-			url: "",
-			homeRank: 99,
-			awayRank: 99,
-			homeTeam: { name: "Chicago Bears", abbreviation: "CHI", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/chi.png", score: "17", rank: null },
-			awayTeam: { name: "Green Bay Packers", abbreviation: "GB", logo: "https://a.espncdn.com/i/teamlogos/nfl/500/gb.png", score: "14", rank: null },
-			state: "in",
-			detail: "Q3 8:42",
-			eventDate: "",
-			situation: { type: "football", text: "3rd & 2 at CHI 45", possessionIsHome: true, possessionIsAway: false },
-			favoriteIsHome: true,
-			favoriteIsAway: false
-		});
-
 		this.sendSocketNotification("FAVORITES_DATA", { games: allGames, requestId });
 	},
 
