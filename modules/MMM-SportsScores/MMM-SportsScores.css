@@ -1,6 +1,6 @@
 .MMM-SportsScores {
-  min-width: 280px;
-  max-width: 290px;
+  min-width: 520px;
+  max-width: 540px;
   font-size: 130%;
 }
 
@@ -136,6 +136,113 @@
 
 .scores-sport-option-active {
   color: var(--color-text-bright);
+}
+
+.scores-columns {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 16px;
+}
+
+.scores-column {
+  flex: 1 1 56%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.standings-column {
+  flex: 1 1 44%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding-left: 16px;
+  border-left: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.standings-view-toggle {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.standings-view-label {
+  font-size: 0.75em;
+  color: var(--color-text);
+  opacity: 0.7;
+  padding: 2px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s;
+}
+
+.standings-view-label:hover {
+  opacity: 1;
+  color: var(--color-text-bright);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.standings-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 12px;
+}
+
+.standings-group-header {
+  font-size: 0.75em;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text);
+  opacity: 0.6;
+  margin-bottom: 2px;
+}
+
+.standings-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.2);
+  font-size: 0.78em;
+  color: var(--color-text);
+}
+
+.standings-row .scores-logo {
+  width: 18px;
+  height: 18px;
+}
+
+.standings-rank {
+  min-width: 14px;
+  font-size: 0.75em;
+  opacity: 0.6;
+  text-align: center;
+}
+
+.standings-record {
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.standings-stat {
+  min-width: 34px;
+  text-align: right;
+  opacity: 0.75;
+  font-size: 0.9em;
+}
+
+.standings-gb {
+  min-width: 24px;
+  text-align: right;
+  opacity: 0.6;
+  font-size: 0.9em;
 }
 
 .scores-favorites {

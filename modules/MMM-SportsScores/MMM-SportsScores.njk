@@ -18,70 +18,124 @@
       </div>
     </div>
 
-    {% if error %}
-      <div class="dimmed small scores-empty">Unable to load scores</div>
-    {% elif games.length == 0 and favorites.length == 0 %}
-      <div class="dimmed small scores-empty">No games scheduled</div>
-    {% else %}
-      <div class="scores-games-container">
-        <div class="scores-games">
-          {% if favorites.length > 0 %}
-            {% for game in favorites %}
-              <div class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}" data-game-id="fav-{{ game.id }}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
-                <div class="scores-teams">
-                  <div class="scores-team-row {{ 'scores-winner' if game.awayTeam.isWinner }}">
-                    {% if showLogos and game.awayTeam.logo %}
-                      <img class="scores-logo" src="{{ game.awayTeam.logo }}" alt="" />
-                    {% endif %}
-                    <span class="scores-abbr {{ 'scores-favorite' if game.awayTeam.isFavorite }}">{% if game.awayTeam.rank %}<span class="scores-rank">{{ game.awayTeam.rank }}</span>{% endif %}{{ game.awayTeam.abbreviation }}</span>
-                    <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.awayTeam.score }}{% endif %}</span>
+    <div class="scores-columns">
+      <div class="scores-column">
+        {% if error %}
+          <div class="dimmed small scores-empty">Unable to load scores</div>
+        {% elif games.length == 0 and favorites.length == 0 %}
+          <div class="dimmed small scores-empty">No games scheduled</div>
+        {% else %}
+          <div class="scores-games-container">
+            <div class="scores-games">
+              {% if favorites.length > 0 %}
+                {% for game in favorites %}
+                  <div
+                    class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}"
+                    data-game-id="fav-{{ game.id }}"
+                    data-url="{{ game.url }}"
+                    data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}"
+                  >
+                    <div class="scores-teams">
+                      <div class="scores-team-row {{ 'scores-winner' if game.awayTeam.isWinner }}">
+                        {% if showLogos and game.awayTeam.logo %}
+                          <img class="scores-logo" src="{{ game.awayTeam.logo }}" alt="" />
+                        {% endif %}
+                        <span class="scores-abbr {{ 'scores-favorite' if game.awayTeam.isFavorite }}">{% if game.awayTeam.rank %}<span class="scores-rank">{{ game.awayTeam.rank }}</span>{% endif %}{{ game.awayTeam.abbreviation }}</span>
+                        <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.awayTeam.score }}{% endif %}</span>
+                      </div>
+                      <div class="scores-team-row {{ 'scores-winner' if game.homeTeam.isWinner }}">
+                        {% if showLogos and game.homeTeam.logo %}
+                          <img class="scores-logo" src="{{ game.homeTeam.logo }}" alt="" />
+                        {% endif %}
+                        <span class="scores-abbr {{ 'scores-favorite' if game.homeTeam.isFavorite }}">{% if game.homeTeam.rank %}<span class="scores-rank">{{ game.homeTeam.rank }}</span>{% endif %}{{ game.homeTeam.abbreviation }}</span>
+                        <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.homeTeam.score }}{% endif %}</span>
+                      </div>
+                    </div>
+                    <div class="scores-detail">
+                      {% if game.state == 'in' %}<span class="scores-live-dot"></span>{% endif %}
+                      <span>{{ game.displayTime }}</span>
+                    </div>
                   </div>
-                  <div class="scores-team-row {{ 'scores-winner' if game.homeTeam.isWinner }}">
-                    {% if showLogos and game.homeTeam.logo %}
-                      <img class="scores-logo" src="{{ game.homeTeam.logo }}" alt="" />
-                    {% endif %}
-                    <span class="scores-abbr {{ 'scores-favorite' if game.homeTeam.isFavorite }}">{% if game.homeTeam.rank %}<span class="scores-rank">{{ game.homeTeam.rank }}</span>{% endif %}{{ game.homeTeam.abbreviation }}</span>
-                    <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.homeTeam.score }}{% endif %}</span>
+                {% endfor %}
+                {% if games.length > 0 %}
+                  <div class="scores-divider"></div>
+                {% endif %}
+              {% endif %}
+              {% for game in games %}
+                <div
+                  class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}"
+                  data-game-id="game-{{ game.id }}"
+                  data-url="{{ game.url }}"
+                  data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}"
+                >
+                  <div class="scores-teams">
+                    <div class="scores-team-row {{ 'scores-winner' if game.awayTeam.isWinner }}">
+                      {% if showLogos and game.awayTeam.logo %}
+                        <img class="scores-logo" src="{{ game.awayTeam.logo }}" alt="" />
+                      {% endif %}
+                      <span class="scores-abbr">{% if game.awayTeam.rank %}<span class="scores-rank">{{ game.awayTeam.rank }}</span>{% endif %}{{ game.awayTeam.abbreviation }}</span>
+                      <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.awayTeam.score }}{% endif %}</span>
+                    </div>
+                    <div class="scores-team-row {{ 'scores-winner' if game.homeTeam.isWinner }}">
+                      {% if showLogos and game.homeTeam.logo %}
+                        <img class="scores-logo" src="{{ game.homeTeam.logo }}" alt="" />
+                      {% endif %}
+                      <span class="scores-abbr">{% if game.homeTeam.rank %}<span class="scores-rank">{{ game.homeTeam.rank }}</span>{% endif %}{{ game.homeTeam.abbreviation }}</span>
+                      <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.homeTeam.score }}{% endif %}</span>
+                    </div>
+                  </div>
+                  <div class="scores-detail">
+                    {% if game.state == 'in' %}<span class="scores-live-dot"></span>{% endif %}
+                    <span>{{ game.displayTime }}</span>
                   </div>
                 </div>
-                <div class="scores-detail">
-                  {% if game.state == 'in' %}<span class="scores-live-dot"></span>{% endif %}
-                  <span>{{ game.displayTime }}</span>
-                </div>
-              </div>
-            {% endfor %}
-            {% if games.length > 0 %}
-              <div class="scores-divider"></div>
-            {% endif %}
-          {% endif %}
-          {% for game in games %}
-            <div class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }}" data-game-id="game-{{ game.id }}" data-url="{{ game.url }}" data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}">
-              <div class="scores-teams">
-                <div class="scores-team-row {{ 'scores-winner' if game.awayTeam.isWinner }}">
-                  {% if showLogos and game.awayTeam.logo %}
-                    <img class="scores-logo" src="{{ game.awayTeam.logo }}" alt="" />
-                  {% endif %}
-                  <span class="scores-abbr">{% if game.awayTeam.rank %}<span class="scores-rank">{{ game.awayTeam.rank }}</span>{% endif %}{{ game.awayTeam.abbreviation }}</span>
-                  <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.awayTeam.score }}{% endif %}</span>
-                </div>
-                <div class="scores-team-row {{ 'scores-winner' if game.homeTeam.isWinner }}">
-                  {% if showLogos and game.homeTeam.logo %}
-                    <img class="scores-logo" src="{{ game.homeTeam.logo }}" alt="" />
-                  {% endif %}
-                  <span class="scores-abbr">{% if game.homeTeam.rank %}<span class="scores-rank">{{ game.homeTeam.rank }}</span>{% endif %}{{ game.homeTeam.abbreviation }}</span>
-                  <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.homeTeam.score }}{% endif %}</span>
-                </div>
-              </div>
-              <div class="scores-detail">
-                {% if game.state == 'in' %}<span class="scores-live-dot"></span>{% endif %}
-                <span>{{ game.displayTime }}</span>
-              </div>
+              {% endfor %}
             </div>
-          {% endfor %}
-        </div>
-        <div class="scores-scroll-indicator">&lsaquo;</div>
+            <div class="scores-scroll-indicator">&lsaquo;</div>
+          </div>
+        {% endif %}
       </div>
-    {% endif %}
+
+      <div class="standings-column">
+        {% if not isRankings %}
+          <div class="standings-view-toggle">
+            <span class="standings-view-label">{{ 'Division' if standingsView == 'division' else 'League' }}</span>
+          </div>
+        {% endif %}
+        {% if standingsError %}
+          <div class="dimmed small scores-empty">Unable to load standings</div>
+        {% elif not standingsLoaded %}
+          <div class="dimmed small scores-empty">Loading standings&hellip;</div>
+        {% elif standingsGroups.length == 0 %}
+          <div class="dimmed small scores-empty">No standings available</div>
+        {% else %}
+          <div class="scores-games-container standings-container">
+            <div class="scores-games standings-list">
+              {% for group in standingsGroups %}
+                <div class="standings-group">
+                  <div class="standings-group-header">{{ group.name }}</div>
+                  {% for team in group.teams %}
+                    <div class="standings-row">
+                      <span class="standings-rank">{{ team.rank if isRankings else team.seed }}</span>
+                      {% if showLogos and team.logo %}
+                        <img class="scores-logo" src="{{ team.logo }}" alt="" />
+                      {% endif %}
+                      <span class="scores-abbr">{{ team.abbreviation }}</span>
+                      <span class="standings-record">{{ team.record }}</span>
+                      {% if not isRankings %}
+                        <span class="standings-stat">{{ team.stat }}</span>
+                        <span class="standings-gb">{{ team.gamesBehind }}</span>
+                      {% endif %}
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+            <div class="scores-scroll-indicator">&lsaquo;</div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
   {% else %}
     <div class="dimmed small scores-empty">Loading scores&hellip;</div>
   {% endif %}

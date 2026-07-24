@@ -11,6 +11,8 @@ module.exports = NodeHelper.create({
 			this.fetchScores(payload);
 		} else if (notification === "FETCH_FAVORITES") {
 			this.fetchFavorites(payload);
+		} else if (notification === "FETCH_STANDINGS") {
+			this.fetchStandings(payload);
 		}
 	},
 
@@ -79,6 +81,98 @@ module.exports = NodeHelper.create({
 
 		await Promise.all(fetches);
 		this.sendSocketNotification("FAVORITES_DATA", { games: allGames, requestId });
+	},
+
+	async fetchStandings (payload) {
+		const { sport, league, top25, view, requestId } = payload;
+
+		try {
+			if (top25) {
+				const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/rankings`;
+				const response = await fetch(url);
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status}`);
+				}
+				const data = await response.json();
+				const poll = (data.rankings || [])[0];
+				const teams = (poll?.ranks || []).map((r) => ({
+					rank: r.current,
+					name: r.team?.displayName || `${r.team?.location || ""} ${r.team?.name || ""}`.trim(),
+					abbreviation: r.team?.abbreviation || "",
+					logo: r.team?.logos?.[0]?.href || "",
+					record: r.recordSummary || ""
+				}));
+				this.sendSocketNotification("STANDINGS_DATA", {
+					isRankings: true,
+					groups: [{ name: poll?.name || "Rankings", teams }],
+					requestId
+				});
+				return;
+			}
+
+			const level = view === "division" ? 3 : 2;
+			const url = `https://site.api.espn.com/apis/v2/sports/${sport}/${league}/standings?level=${level}`;
+			const response = await fetch(url);
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			const data = await response.json();
+			const groups = this.collectStandingsGroups(data);
+			this.sendSocketNotification("STANDINGS_DATA", { isRankings: false, groups, requestId });
+		} catch (error) {
+			Log.error(`${this.name}: Error fetching standings:`, error.message);
+			this.sendSocketNotification("STANDINGS_ERROR", { message: error.message, requestId });
+		}
+	},
+
+	collectStandingsGroups (node, groups = []) {
+		if (node.standings && node.standings.entries) {
+			groups.push({
+				name: node.name || node.abbreviation || "",
+				teams: node.standings.entries.map((entry) => this.parseStandingsEntry(entry))
+			});
+		}
+		if (node.children) {
+			for (const child of node.children) {
+				this.collectStandingsGroups(child, groups);
+			}
+		}
+		return groups;
+	},
+
+	parseStandingsEntry (entry) {
+		const statsByName = {};
+		for (const s of entry.stats || []) {
+			statsByName[s.name] = s.displayValue;
+		}
+
+		const wins = statsByName.wins || "0";
+		const losses = statsByName.losses || "0";
+		const ties = parseInt(statsByName.ties) || 0;
+		const otLosses = statsByName.otLosses;
+
+		let record;
+		let stat;
+		if (otLosses !== undefined) {
+			record = `${wins}-${losses}-${otLosses}`;
+			stat = statsByName.points ? `${statsByName.points} PTS` : (statsByName.winPercent || "");
+		} else if (ties > 0) {
+			record = `${wins}-${losses}-${ties}`;
+			stat = statsByName.winPercent || "";
+		} else {
+			record = `${wins}-${losses}`;
+			stat = statsByName.winPercent || "";
+		}
+
+		return {
+			seed: statsByName.playoffSeed || "",
+			name: entry.team?.displayName || "",
+			abbreviation: entry.team?.abbreviation || "",
+			logo: entry.team?.logos?.[0]?.href || "",
+			record,
+			stat,
+			gamesBehind: statsByName.gamesBehind || "-"
+		};
 	},
 
 	parseGames (data, sport, league) {
