@@ -1,7 +1,6 @@
 Module.register("MMM-SportsScores", {
 	defaults: {
 		sports: [
-			{ label: "World Cup", icon: "⚽", sport: "soccer", league: "fifa.world" },
 			{ label: "NFL", icon: "🏈", sport: "football", league: "nfl" },
 			{ label: "NBA", icon: "🏀", sport: "basketball", league: "nba" },
 			{ label: "MLB", icon: "⚾", sport: "baseball", league: "mlb" },
@@ -37,8 +36,15 @@ Module.register("MMM-SportsScores", {
 		this.requestId = null;
 		this.favoriteGames = [];
 		this.favoritesRequestId = null;
+		this.standingsGroups = [];
+		this.standingsLoaded = false;
+		this.standingsError = null;
+		this.standingsRequestId = null;
+		this.isRankingsView = false;
+		this.standingsView = "league";
 		this.fetchScores();
 		this.fetchFavorites();
+		this.fetchStandings();
 		this.scheduleRefresh();
 
 		document.addEventListener("mm-activity", () => {
@@ -115,7 +121,12 @@ Module.register("MMM-SportsScores", {
 			games: games,
 			showLogos: this.config.showLogos,
 			canGoBack: true,
-			canGoForward: true
+			canGoForward: true,
+			standingsLoaded: this.standingsLoaded,
+			standingsError: this.standingsError,
+			standingsGroups: this.standingsGroups,
+			isRankings: this.isRankingsView,
+			standingsView: this.standingsView
 		};
 	},
 
@@ -181,28 +192,48 @@ Module.register("MMM-SportsScores", {
 						this.updateSportLabel();
 						this.dimContent();
 						this.fetchScores();
+						this.fetchStandings();
 					}
 					this.broadcastInteraction();
 				});
 			});
 
-			const gamesList = dom.querySelector(".scores-games");
-			const indicator = dom.querySelector(".scores-scroll-indicator");
-			if (gamesList && indicator) {
-				const updateIndicator = () => {
-					const canScroll = gamesList.scrollHeight > gamesList.clientHeight;
-					const atBottom = gamesList.scrollTop + gamesList.clientHeight >= gamesList.scrollHeight - 2;
-					indicator.classList.toggle("visible", canScroll && !atBottom);
-				};
-				gamesList.addEventListener("scroll", () => {
-					updateIndicator();
+			const standingsViewToggle = dom.querySelector(".standings-view-toggle");
+			if (standingsViewToggle) {
+				standingsViewToggle.addEventListener("click", (e) => {
+					e.stopPropagation();
+					this.standingsView = this.standingsView === "league" ? "division" : "league";
+					this.updateStandingsViewLabel();
+					this.dimStandingsColumn();
+					this.fetchStandings();
 					this.broadcastInteraction();
 				});
-				this._updateScrollIndicator = updateIndicator;
 			}
+
+			const gamesUpdate = this.bindScrollIndicator(dom.querySelector(".scores-games"), dom.querySelector(".scores-games-container .scores-scroll-indicator"));
+			this._gamesScrollUpdate = gamesUpdate;
+			this._standingsScrollUpdate = this.bindScrollIndicator(dom.querySelector(".standings-list"), dom.querySelector(".standings-container .scores-scroll-indicator"));
+			this._updateScrollIndicator = () => {
+				if (this._gamesScrollUpdate) this._gamesScrollUpdate();
+				if (this._standingsScrollUpdate) this._standingsScrollUpdate();
+			};
 
 			return dom;
 		});
+	},
+
+	bindScrollIndicator (listEl, indicatorEl) {
+		if (!listEl || !indicatorEl) return null;
+		const update = () => {
+			const canScroll = listEl.scrollHeight > listEl.clientHeight;
+			const atBottom = listEl.scrollTop + listEl.clientHeight >= listEl.scrollHeight - 2;
+			indicatorEl.classList.toggle("visible", canScroll && !atBottom);
+		};
+		listEl.addEventListener("scroll", () => {
+			update();
+			this.broadcastInteraction();
+		});
+		return update;
 	},
 
 	updateDateLabel () {
@@ -223,12 +254,92 @@ Module.register("MMM-SportsScores", {
 		label.textContent = `${sport.icon} ${sport.label}`;
 	},
 
+	updateStandingsViewLabel () {
+		const wrapper = document.getElementById(this.identifier);
+		if (!wrapper) return;
+		const label = wrapper.querySelector(".standings-view-label");
+		if (!label) return;
+		label.textContent = this.standingsView === "division" ? "Division" : "League";
+	},
+
+	_escapeHtml (value) {
+		return String(value).replace(/[&<>"']/g, (c) => ({
+			"&": "&amp;",
+			"<": "&lt;",
+			">": "&gt;",
+			"\"": "&quot;",
+			"'": "&#39;"
+		}[c]));
+	},
+
+	renderStandingsContent () {
+		if (this.standingsError) {
+			return `<div class="dimmed small scores-empty">Unable to load standings</div>`;
+		}
+		if (!this.standingsLoaded) {
+			return `<div class="dimmed small scores-empty">Loading standings&hellip;</div>`;
+		}
+		if (!this.standingsGroups || this.standingsGroups.length === 0) {
+			return `<div class="dimmed small scores-empty">No standings available</div>`;
+		}
+
+		const groupsHtml = this.standingsGroups.map((group) => {
+			const teamsHtml = group.teams.map((team) => {
+				const logo = (this.config.showLogos && team.logo)
+					? `<img class="scores-logo" src="${this._escapeHtml(team.logo)}" alt="" />`
+					: "";
+				const rankOrSeed = this._escapeHtml(this.isRankingsView ? team.rank : team.seed);
+				const extra = this.isRankingsView
+					? ""
+					: `<span class="standings-stat">${this._escapeHtml(team.stat)}</span>
+					   <span class="standings-gb">${this._escapeHtml(team.gamesBehind)}</span>`;
+				return `<div class="standings-row">
+					<span class="standings-rank">${rankOrSeed}</span>
+					${logo}
+					<span class="scores-abbr">${this._escapeHtml(team.abbreviation)}</span>
+					<span class="standings-record">${this._escapeHtml(team.record)}</span>
+					${extra}
+				</div>`;
+			}).join("");
+
+			return `<div class="standings-group">
+				<div class="standings-group-header">${this._escapeHtml(group.name)}</div>
+				${teamsHtml}
+			</div>`;
+		}).join("");
+
+		return `<div class="scores-games-container standings-container">
+			<div class="scores-games standings-list">${groupsHtml}</div>
+			<div class="scores-scroll-indicator">&lsaquo;</div>
+		</div>`;
+	},
+
+	updateStandingsColumn () {
+		const wrapper = document.getElementById(this.identifier);
+		const column = wrapper ? wrapper.querySelector(".standings-column") : null;
+		if (!column) {
+			this.updateDom(300);
+			return;
+		}
+		column.innerHTML = this.renderStandingsContent();
+		column.style.opacity = "1";
+		this._standingsScrollUpdate = this.bindScrollIndicator(column.querySelector(".standings-list"), column.querySelector(".standings-container .scores-scroll-indicator"));
+		if (this._standingsScrollUpdate) this._standingsScrollUpdate();
+	},
+
 	dimContent () {
 		const wrapper = document.getElementById(this.identifier);
 		if (!wrapper) return;
-		wrapper.querySelectorAll(".scores-games-container, .scores-empty").forEach((el) => {
+		wrapper.querySelectorAll(".scores-games-container, .standings-container, .scores-empty").forEach((el) => {
 			el.style.opacity = "0.3";
 		});
+	},
+
+	dimStandingsColumn () {
+		const wrapper = document.getElementById(this.identifier);
+		if (!wrapper) return;
+		const column = wrapper.querySelector(".standings-column");
+		if (column) column.style.opacity = "0.3";
 	},
 
 
@@ -433,6 +544,18 @@ Module.register("MMM-SportsScores", {
 		});
 	},
 
+	fetchStandings () {
+		const sport = this.config.sports[this.activeSportIndex];
+		this.standingsRequestId = `standings-${this.activeSportIndex}-${Date.now()}`;
+		this.sendSocketNotification("FETCH_STANDINGS", {
+			sport: sport.sport,
+			league: sport.league,
+			top25: sport.top25 || false,
+			view: this.standingsView,
+			requestId: this.standingsRequestId
+		});
+	},
+
 	socketNotificationReceived (notification, payload) {
 		if (notification === "SCORES_DATA" && payload.requestId === this.requestId) {
 			const oldGames = this.games;
@@ -456,6 +579,16 @@ Module.register("MMM-SportsScores", {
 			} else {
 				this.updateDom(300);
 			}
+		} else if (notification === "STANDINGS_DATA" && payload.requestId === this.standingsRequestId) {
+			this.standingsGroups = payload.groups;
+			this.isRankingsView = payload.isRankings;
+			this.standingsLoaded = true;
+			this.standingsError = null;
+			this.updateStandingsColumn();
+		} else if (notification === "STANDINGS_ERROR" && payload.requestId === this.standingsRequestId) {
+			this.standingsError = payload.message;
+			this.standingsLoaded = true;
+			this.updateStandingsColumn();
 		}
 	},
 
@@ -464,8 +597,15 @@ Module.register("MMM-SportsScores", {
 		if (oldGames.length !== newGames.length) return false;
 		for (let i = 0; i < oldGames.length; i++) {
 			if (oldGames[i].id !== newGames[i].id) return false;
+			if (!this._situationEqual(oldGames[i].situation, newGames[i].situation)) return false;
 		}
 		return true;
+	},
+
+	_situationEqual (a, b) {
+		if (!a && !b) return true;
+		if (!a || !b) return false;
+		return JSON.stringify(a) === JSON.stringify(b);
 	},
 
 	_prepareGame (game) {
@@ -573,9 +713,11 @@ Module.register("MMM-SportsScores", {
 		setTimeout(() => {
 			this.fetchScores();
 			this.fetchFavorites();
+			this.fetchStandings();
 			setInterval(() => {
 				this.fetchScores();
 				this.fetchFavorites();
+				this.fetchStandings();
 			}, 60000);
 		}, msUntilNextMinute);
 	}
