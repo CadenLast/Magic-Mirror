@@ -1,7 +1,7 @@
 .MMM-SportsScores {
   min-width: 520px;
   max-width: 540px;
-  font-size: 130%;
+  font-size: 120%;
 }
 
 /* Reserve the module's full height so the layout doesn't collapse/shift
@@ -74,18 +74,18 @@
 }
 
 .scores-header-left {
-  flex: 1 1 56%;
+  flex: 1 1 50%;
   min-width: 0;
   display: flex;
   justify-content: center;
 }
 
 .scores-header-right {
-  flex: 1 1 44%;
+  flex: 1 1 50%;
   min-width: 0;
   display: flex;
   justify-content: center;
-  padding-left: 16px;
+  padding-left: 10px;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -164,22 +164,22 @@
   display: flex;
   flex: 1;
   min-height: 0;
-  gap: 16px;
+  gap: 12px;
 }
 
 .scores-column {
-  flex: 1 1 56%;
+  flex: 1 1 50%;
   min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
 .standings-column {
-  flex: 1 1 44%;
+  flex: 1 1 50%;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  padding-left: 16px;
+  padding-left: 10px;
   border-left: 1px solid rgba(255, 255, 255, 0.1);
 }
 
@@ -229,8 +229,8 @@
 .standings-row {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 5px 8px;
+  gap: 4px;
+  padding: 5px 6px;
   border-radius: 5px;
   background: rgba(0, 0, 0, 0.2);
   font-size: 0.78em;
@@ -238,35 +238,54 @@
 }
 
 .standings-row .scores-logo {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
 
+/* Fixed (not min-) widths so every row's columns line up at the same x,
+   regardless of how wide that row's own text happens to be. */
 .standings-rank {
-  min-width: 14px;
+  flex: 0 0 2ch;
   font-size: 0.75em;
   opacity: 0.6;
   text-align: center;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.standings-row .scores-abbr {
+  flex: 0 0 4ch;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .standings-record {
-  min-width: 48px;
+  flex: 0 0 7ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .standings-stat {
-  min-width: 34px;
+  flex: 0 0 7ch;
   text-align: right;
   opacity: 0.75;
   font-size: 0.9em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .standings-gb {
-  min-width: 24px;
+  flex: 0 0 4ch;
   text-align: right;
   opacity: 0.6;
   font-size: 0.9em;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .scores-favorites {
