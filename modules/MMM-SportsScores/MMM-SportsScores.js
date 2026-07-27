@@ -42,6 +42,7 @@ Module.register("MMM-SportsScores", {
 		this.standingsRequestId = null;
 		this.isRankingsView = false;
 		this.standingsView = "league";
+		this._standingsOnlyUpdate = false;
 		this.fetchScores();
 		this.fetchFavorites();
 		this.fetchStandings();
@@ -57,6 +58,26 @@ Module.register("MMM-SportsScores", {
 
 	getTemplate () {
 		return "MMM-SportsScores.njk";
+	},
+
+	getFavoriteNameSubstrings () {
+		const sport = this.config.sports[this.activeSportIndex];
+		if (!sport || !this.config.favoriteTeams) return [];
+		return this.config.favoriteTeams
+			.filter((f) => f.sport === sport.sport && f.league === sport.league)
+			.map((f) => f.team.toLowerCase());
+	},
+
+	annotateStandingsFavorites (groups) {
+		const favoriteNames = this.getFavoriteNameSubstrings();
+		if (favoriteNames.length === 0) return groups;
+		return groups.map((group) => ({
+			...group,
+			teams: group.teams.map((team) => ({
+				...team,
+				isFavorite: favoriteNames.some((name) => team.name.toLowerCase().includes(name))
+			}))
+		}));
 	},
 
 	getTemplateData () {
@@ -124,7 +145,7 @@ Module.register("MMM-SportsScores", {
 			canGoForward: true,
 			standingsLoaded: this.standingsLoaded,
 			standingsError: this.standingsError,
-			standingsGroups: this.standingsGroups,
+			standingsGroups: this.annotateStandingsFavorites(this.standingsGroups),
 			isRankings: this.isRankingsView,
 			standingsView: this.standingsView
 		};
@@ -191,6 +212,7 @@ Module.register("MMM-SportsScores", {
 						this.activeSportIndex = index;
 						this.updateSportLabel();
 						this.dimContent();
+						this._standingsOnlyUpdate = false;
 						this.fetchScores();
 						this.fetchStandings();
 					}
@@ -205,6 +227,7 @@ Module.register("MMM-SportsScores", {
 					this.standingsView = this.standingsView === "league" ? "division" : "league";
 					this.updateStandingsViewLabel();
 					this.dimStandingsColumn();
+					this._standingsOnlyUpdate = true;
 					this.fetchStandings();
 					this.broadcastInteraction();
 				});
@@ -283,7 +306,7 @@ Module.register("MMM-SportsScores", {
 			return `<div class="dimmed small scores-empty">No standings available</div>`;
 		}
 
-		const groupsHtml = this.standingsGroups.map((group) => {
+		const groupsHtml = this.annotateStandingsFavorites(this.standingsGroups).map((group) => {
 			const teamsHtml = group.teams.map((team) => {
 				const logo = (this.config.showLogos && team.logo)
 					? `<img class="scores-logo" src="${this._escapeHtml(team.logo)}" alt="" />`
@@ -293,10 +316,11 @@ Module.register("MMM-SportsScores", {
 					? ""
 					: `<span class="standings-stat">${this._escapeHtml(team.stat)}</span>
 					   <span class="standings-gb">${this._escapeHtml(team.gamesBehind)}</span>`;
+				const abbrClass = team.isFavorite ? "scores-abbr scores-favorite" : "scores-abbr";
 				return `<div class="standings-row">
 					<span class="standings-rank">${rankOrSeed}</span>
 					${logo}
-					<span class="scores-abbr">${this._escapeHtml(team.abbreviation)}</span>
+					<span class="${abbrClass}">${this._escapeHtml(team.abbreviation)}</span>
 					<span class="standings-record">${this._escapeHtml(team.record)}</span>
 					${extra}
 				</div>`;
@@ -584,12 +608,26 @@ Module.register("MMM-SportsScores", {
 			this.isRankingsView = payload.isRankings;
 			this.standingsLoaded = true;
 			this.standingsError = null;
-			this.updateStandingsColumn();
+			this.refreshStandingsDisplay();
 		} else if (notification === "STANDINGS_ERROR" && payload.requestId === this.standingsRequestId) {
 			this.standingsError = payload.message;
 			this.standingsLoaded = true;
-			this.updateStandingsColumn();
+			this.refreshStandingsDisplay();
 		}
+	},
+
+	refreshStandingsDisplay () {
+		// Only take the lightweight column-only patch when nothing else on the
+		// module is changing (e.g. the League/Division toggle). If a sport
+		// switch or scheduled refresh is also touching scores, a competing
+		// full updateDom() can finish after this patch and clobber it with
+		// stale data, so fall back to the normal full re-render there.
+		if (this._standingsOnlyUpdate) {
+			this.updateStandingsColumn();
+		} else {
+			this.updateDom(300);
+		}
+		this._standingsOnlyUpdate = false;
 	},
 
 	_canPatch (oldGames, newGames) {
@@ -713,10 +751,12 @@ Module.register("MMM-SportsScores", {
 		setTimeout(() => {
 			this.fetchScores();
 			this.fetchFavorites();
+			this._standingsOnlyUpdate = false;
 			this.fetchStandings();
 			setInterval(() => {
 				this.fetchScores();
 				this.fetchFavorites();
+				this._standingsOnlyUpdate = false;
 				this.fetchStandings();
 			}, 60000);
 		}, msUntilNextMinute);

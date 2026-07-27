@@ -149,7 +149,7 @@
                       {% if showLogos and team.logo %}
                         <img class="scores-logo" src="{{ team.logo }}" alt="" />
                       {% endif %}
-                      <span class="scores-abbr">{{ team.abbreviation }}</span>
+                      <span class="scores-abbr {{ 'scores-favorite' if team.isFavorite }}">{{ team.abbreviation }}</span>
                       <span class="standings-record">{{ team.record }}</span>
                       {% if not isRankings %}
                         <span class="standings-stat">{{ team.stat }}</span>
