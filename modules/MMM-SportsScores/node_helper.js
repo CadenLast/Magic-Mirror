@@ -1,6 +1,19 @@
 const NodeHelper = require("node_helper");
 const Log = require("logger");
 
+// A generic scraper-shaped request (Node's default fetch sends "User-Agent: node"
+// and little else) is an easy flag for ESPN/Akamai's bot detection. These headers
+// make the request look like it came from a real browser loading espn.com itself.
+const ESPN_HEADERS = {
+	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+	Accept: "application/json, text/plain, */*",
+	"Accept-Language": "en-US,en;q=0.9",
+	Referer: "https://www.espn.com/",
+	Origin: "https://www.espn.com"
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 module.exports = NodeHelper.create({
 	start () {
 		Log.log(`Starting node helper for: ${this.name}`);
@@ -21,7 +34,7 @@ module.exports = NodeHelper.create({
 		const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard?dates=${date}`;
 
 		try {
-			const response = await fetch(url);
+			const response = await fetch(url, { headers: ESPN_HEADERS });
 			if (!response.ok) {
 				throw new Error(`HTTP ${response.status}`);
 			}
@@ -56,10 +69,14 @@ module.exports = NodeHelper.create({
 		}
 
 		const allGames = [];
-		const fetches = Object.values(leagueMap).map(async ({ sport, league, teams }) => {
+		// Stagger these instead of firing every league's request in the same instant -
+		// a burst of simultaneous connections from one IP, every minute, is a much
+		// easier bot-detection signal than the same requests spread out a bit.
+		const fetches = Object.values(leagueMap).map(async ({ sport, league, teams }, index) => {
+			await sleep(index * 400);
 			const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/scoreboard?dates=${date}`;
 			try {
-				const response = await fetch(url);
+				const response = await fetch(url, { headers: ESPN_HEADERS });
 				if (!response.ok) return;
 				const data = await response.json();
 				const games = this.parseGames(data, sport, league);
@@ -90,7 +107,7 @@ module.exports = NodeHelper.create({
 		try {
 			if (top25) {
 				const url = `https://site.api.espn.com/apis/site/v2/sports/${sport}/${league}/rankings`;
-				const response = await fetch(url);
+				const response = await fetch(url, { headers: ESPN_HEADERS });
 				if (!response.ok) {
 					throw new Error(`HTTP ${response.status}`);
 				}
@@ -113,7 +130,7 @@ module.exports = NodeHelper.create({
 
 			const level = view === "division" ? 3 : 2;
 			const url = `https://site.api.espn.com/apis/v2/sports/${sport}/${league}/standings?level=${level}`;
-			const response = await fetch(url);
+			const response = await fetch(url, { headers: ESPN_HEADERS });
 			if (!response.ok) {
 				throw new Error(`HTTP ${response.status}`);
 			}
