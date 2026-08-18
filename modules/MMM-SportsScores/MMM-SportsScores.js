@@ -43,9 +43,7 @@ Module.register("MMM-SportsScores", {
 		this.isRankingsView = false;
 		this.standingsView = "league";
 		this._standingsOnlyUpdate = false;
-		this.fetchScores();
-		this.fetchFavorites();
-		this.fetchStandings();
+		this.runStaggeredRefresh();
 		this.scheduleRefresh();
 
 		document.addEventListener("mm-activity", () => {
@@ -746,19 +744,27 @@ Module.register("MMM-SportsScores", {
 		});
 	},
 
-	scheduleRefresh () {
-		const msUntilNextMinute = 60000 - (Date.now() % 60000);
+	runStaggeredRefresh () {
+		// Spread these out instead of firing every request in the same instant -
+		// a burst of simultaneous connections every minute, on the dot, is a much
+		// easier bot-detection signal to a WAF than the same requests spread apart.
+		this.fetchScores();
+		setTimeout(() => this.fetchFavorites(), 800);
 		setTimeout(() => {
-			this.fetchScores();
-			this.fetchFavorites();
 			this._standingsOnlyUpdate = false;
 			this.fetchStandings();
-			setInterval(() => {
-				this.fetchScores();
-				this.fetchFavorites();
-				this._standingsOnlyUpdate = false;
-				this.fetchStandings();
-			}, 60000);
-		}, msUntilNextMinute);
+		}, 1600);
+	},
+
+	scheduleRefresh () {
+		const scheduleNext = () => {
+			const jitter = Math.floor(Math.random() * 5000);
+			const msUntilNextMinute = 60000 - (Date.now() % 60000) + jitter;
+			setTimeout(() => {
+				this.runStaggeredRefresh();
+				scheduleNext();
+			}, msUntilNextMinute);
+		};
+		scheduleNext();
 	}
 });
