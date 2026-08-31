@@ -359,7 +359,7 @@ module.exports = NodeHelper.create({
 	// retry after a short pause consistently succeeds), so every core-page
 	// fetch goes through this instead of a bare fetch()+response.json().
 	async fetchEspnCoreJson (url) {
-		const maxAttempts = 3;
+		const maxAttempts = 5;
 		for (let attempt = 1; ; attempt++) {
 			try {
 				const response = await fetch(url, { headers: ESPN_HEADERS });
@@ -371,7 +371,7 @@ module.exports = NodeHelper.create({
 				if (attempt >= maxAttempts) {
 					throw error;
 				}
-				await sleep(500 * attempt);
+				await sleep(750 * attempt);
 			}
 		}
 	},
