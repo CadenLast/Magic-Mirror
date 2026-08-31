@@ -15,7 +15,15 @@ Module.register("MMM-SportsScores", {
 		animationSpeed: 500,
 		maxDaysAhead: 7,
 		maxDaysBehind: 7,
-		showLogos: true
+		showLogos: true,
+		// Optional: route the NFL/NBA/NCAAF/NCAAB ESPN requests through a proxy
+		// (e.g. a Cloudflare Worker) instead of calling ESPN directly, to work
+		// around Akamai blocking a specific home IP. Leave url empty to call
+		// ESPN directly as normal.
+		espnProxy: {
+			url: "",
+			key: ""
+		}
 	},
 
 	getScripts () {
@@ -551,6 +559,7 @@ Module.register("MMM-SportsScores", {
 			league: sport.league,
 			date: targetDate,
 			top25: sport.top25 || false,
+			espnProxy: this.config.espnProxy,
 			requestId: this.requestId
 		});
 	},
@@ -562,6 +571,7 @@ Module.register("MMM-SportsScores", {
 		this.sendSocketNotification("FETCH_FAVORITES", {
 			date: targetDate,
 			favorites: this.config.favoriteTeams,
+			espnProxy: this.config.espnProxy,
 			requestId: this.favoritesRequestId
 		});
 	},
@@ -574,6 +584,7 @@ Module.register("MMM-SportsScores", {
 			league: sport.league,
 			top25: sport.top25 || false,
 			view: this.standingsView,
+			espnProxy: this.config.espnProxy,
 			requestId: this.standingsRequestId
 		});
 	},
