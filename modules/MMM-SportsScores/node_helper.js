@@ -15,12 +15,30 @@ const ESPN_HEADERS = {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // MLB and NHL both publish their own free, key-less, official APIs, so those two
-// sports don't need to go through ESPN's hidden (and Akamai-blockable) endpoint
-// at all. Everything else still uses ESPN.
+// sports don't need to go through ESPN at all. The rest use ESPN's public
+// website data (cdn.espn.com "core" pages) rather than the hidden mobile API
+// (site.api.espn.com), since Akamai blocks that one but not this one - the
+// tradeoff is the core pages always show the current/live scoreboard and don't
+// support browsing to an arbitrary past/future date.
 const NATIVE_PROVIDERS = {
 	"baseball/mlb": "mlb",
-	"hockey/nhl": "nhl"
+	"hockey/nhl": "nhl",
+	"football/nfl": "espn-core",
+	"basketball/nba": "espn-core",
+	"football/college-football": "espn-core",
+	"basketball/mens-college-basketball": "espn-core"
 };
+
+// NFL and college football are scheduled in weeks, and the core scoreboard page
+// ignores a plain "dates=" query - it only respects an explicit year/seasontype/week
+// combination, so browsing to a specific date means walking the season's calendar
+// (returned alongside the current week's data) to find which week contains it.
+// NBA and college basketball are scheduled daily, and "dates=YYYYMMDD" works as-is.
+const WEEK_BASED_LEAGUES = new Set(["nfl", "college-football"]);
+
+// The core rankings ("AP Top 25" style poll) page only exists for college football;
+// college basketball has no equivalent page under cdn.espn.com.
+const RANKINGS_SUPPORTED_LEAGUES = new Set(["college-football"]);
 
 const toIsoDate = (yyyymmdd) => `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 
@@ -43,11 +61,12 @@ module.exports = NodeHelper.create({
 		return NATIVE_PROVIDERS[`${sport}/${league}`] || "espn";
 	},
 
-	// Builds a site.api.espn.com URL, or - if an espnProxy is configured in
-	// config.js - the equivalent URL through that proxy (a Cloudflare Worker,
-	// typically) so the request comes from a different IP than this Pi's.
-	buildEspnUrl (path, query, proxy) {
-		const base = proxy && proxy.url ? `${proxy.url.replace(/\/$/, "")}/proxy` : "https://site.api.espn.com";
+	// Builds an ESPN URL against the given host, or - if an espnProxy is
+	// configured in config.js - the equivalent URL through that proxy (a
+	// Cloudflare Worker, typically) so the request comes from a different IP
+	// than this Pi's.
+	buildEspnUrl (host, path, query, proxy) {
+		const base = proxy && proxy.url ? `${proxy.url.replace(/\/$/, "")}/proxy` : host;
 		const url = new URL(`${base}${path}`);
 		for (const [key, value] of Object.entries(query || {})) {
 			url.searchParams.set(key, value);
@@ -65,6 +84,9 @@ module.exports = NodeHelper.create({
 		}
 		if (provider === "nhl") {
 			return this.fetchNhlGames(date);
+		}
+		if (provider === "espn-core") {
+			return this.fetchEspnCoreGames(sport, league, date, top25, proxy);
 		}
 		return this.fetchEspnGames(sport, league, date, top25, proxy);
 	},
@@ -137,6 +159,8 @@ module.exports = NodeHelper.create({
 				result = await this.fetchMlbStandings(view);
 			} else if (provider === "nhl") {
 				result = await this.fetchNhlStandings(view);
+			} else if (provider === "espn-core") {
+				result = await this.fetchEspnCoreStandings(league, top25, view, espnProxy);
 			} else {
 				result = await this.fetchEspnStandings(sport, league, top25, view, espnProxy);
 			}
@@ -152,7 +176,7 @@ module.exports = NodeHelper.create({
 	// ---------------------------------------------------------------------
 
 	async fetchEspnGames (sport, league, date, top25, proxy) {
-		const url = this.buildEspnUrl(`/apis/site/v2/sports/${sport}/${league}/scoreboard`, { dates: date }, proxy);
+		const url = this.buildEspnUrl("https://site.api.espn.com", `/apis/site/v2/sports/${sport}/${league}/scoreboard`, { dates: date }, proxy);
 		const response = await fetch(url, { headers: ESPN_HEADERS });
 		if (!response.ok) {
 			throw new Error(`HTTP ${response.status}`);
@@ -167,7 +191,7 @@ module.exports = NodeHelper.create({
 
 	async fetchEspnStandings (sport, league, top25, view, proxy) {
 		if (top25) {
-			const url = this.buildEspnUrl(`/apis/site/v2/sports/${sport}/${league}/rankings`, {}, proxy);
+			const url = this.buildEspnUrl("https://site.api.espn.com", `/apis/site/v2/sports/${sport}/${league}/rankings`, {}, proxy);
 			const response = await fetch(url, { headers: ESPN_HEADERS });
 			if (!response.ok) {
 				throw new Error(`HTTP ${response.status}`);
@@ -185,7 +209,7 @@ module.exports = NodeHelper.create({
 		}
 
 		const level = view === "division" ? 3 : 2;
-		const url = this.buildEspnUrl(`/apis/v2/sports/${sport}/${league}/standings`, { level }, proxy);
+		const url = this.buildEspnUrl("https://site.api.espn.com", `/apis/v2/sports/${sport}/${league}/standings`, { level }, proxy);
 		const response = await fetch(url, { headers: ESPN_HEADERS });
 		if (!response.ok) {
 			throw new Error(`HTTP ${response.status}`);
@@ -235,7 +259,7 @@ module.exports = NodeHelper.create({
 		}
 
 		return {
-			seed: statsByName.playoffSeed || "",
+			seed: statsByName.playoffSeed || entry.team?.seed || "",
 			name: entry.team?.displayName || "",
 			abbreviation: entry.team?.abbreviation || "",
 			logo: entry.team?.logos?.[0]?.href || "",
@@ -322,6 +346,159 @@ module.exports = NodeHelper.create({
 		}
 
 		return null;
+	},
+
+	// ---------------------------------------------------------------------
+	// ESPN core pages (NFL, NBA, NCAAF, NCAAB) - the public website-rendering
+	// API at cdn.espn.com, used instead of the hidden mobile API above because
+	// Akamai blocks that one from residential/datacenter IPs but not this one.
+	// ---------------------------------------------------------------------
+
+	// cdn.espn.com occasionally answers with an empty 202 "hold on" response
+	// instead of JSON (a soft Akamai throttle, not a real block - a plain
+	// retry after a short pause consistently succeeds), so every core-page
+	// fetch goes through this instead of a bare fetch()+response.json().
+	async fetchEspnCoreJson (url) {
+		const maxAttempts = 3;
+		for (let attempt = 1; ; attempt++) {
+			try {
+				const response = await fetch(url, { headers: ESPN_HEADERS });
+				if (!response.ok) {
+					throw new Error(`HTTP ${response.status}`);
+				}
+				return await response.json();
+			} catch (error) {
+				if (attempt >= maxAttempts) {
+					throw error;
+				}
+				await sleep(500 * attempt);
+			}
+		}
+	},
+
+	async fetchEspnCoreGames (sport, league, date, top25, proxy) {
+		const host = "https://cdn.espn.com";
+		let events;
+		if (WEEK_BASED_LEAGUES.has(league)) {
+			events = await this.fetchEspnCoreWeekEvents(host, league, date, proxy);
+		} else {
+			const url = this.buildEspnUrl(host, `/core/${league}/scoreboard`, { xhr: 1, limit: 200, dates: date }, proxy);
+			const data = await this.fetchEspnCoreJson(url);
+			events = data.content?.sbData?.events || [];
+		}
+		let games = this.parseGames({ events }, sport, league);
+		if (top25) {
+			games = games.filter((g) => g.homeRank <= 25 || g.awayRank <= 25);
+		}
+		return games;
+	},
+
+	// Week-based leagues ignore "dates=" entirely, so getting a specific date's
+	// games means fetching the current week first (which also returns the
+	// season's full calendar), finding which week actually contains that date,
+	// and - if it isn't the week already fetched - fetching that week directly
+	// via explicit year/seasontype/week params.
+	async fetchEspnCoreWeekEvents (host, league, date, proxy) {
+		const baseUrl = this.buildEspnUrl(host, `/core/${league}/scoreboard`, { xhr: 1, limit: 200 }, proxy);
+		const baseData = await this.fetchEspnCoreJson(baseUrl);
+		const current = baseData.content?.dateParams || {};
+		const calendar = baseData.content?.calendar || [];
+		const target = date ? this.resolveCoreWeek(calendar, date, current) : null;
+
+		if (!target || (String(target.week) === String(current.week) && String(target.seasontype) === String(current.seasontype))) {
+			// Either no specific date was requested, or it falls in the week we
+			// already have - and if the date is outside this season's calendar
+			// entirely (far past/future), fall back to the current week rather
+			// than fetching a different season.
+			return baseData.content?.sbData?.events || [];
+		}
+
+		const url = this.buildEspnUrl(host, `/core/${league}/scoreboard`, { xhr: 1, limit: 200, year: target.year, seasontype: target.seasontype, week: target.week }, proxy);
+		const data = await this.fetchEspnCoreJson(url);
+		return data.content?.sbData?.events || [];
+	},
+
+	// Finds which calendar entry (week) contains the target date. The calendar
+	// is a list of season-phase groups (Preseason/Regular Season/Postseason),
+	// each with per-week entries carrying a startDate/endDate range.
+	resolveCoreWeek (calendar, date, current) {
+		const target = new Date(`${toIsoDate(date)}T12:00:00Z`);
+		for (const group of calendar) {
+			for (const entry of group.entries || []) {
+				if (target >= new Date(entry.startDate) && target <= new Date(entry.endDate)) {
+					return { year: current.year, seasontype: group.value, week: entry.value };
+				}
+			}
+		}
+		return null;
+	},
+
+	async fetchEspnCoreStandings (league, top25, view, proxy) {
+		const host = "https://cdn.espn.com";
+
+		if (top25) {
+			if (!RANKINGS_SUPPORTED_LEAGUES.has(league)) {
+				throw new Error(`Top 25 rankings aren't available for ${league} right now`);
+			}
+			const url = this.buildEspnUrl(host, `/core/${league}/rankings`, { xhr: 1 }, proxy);
+			const data = await this.fetchEspnCoreJson(url);
+			const poll = (data.content?.data?.rankings || [])[0];
+			const teams = (poll?.ranks || []).map((r) => ({
+				rank: r.rank,
+				name: r.team_display_name || "",
+				abbreviation: r.team_abbreviation || "",
+				logo: r.team_logo || "",
+				record: r.formatted_record || ""
+			}));
+			return { isRankings: true, groups: [{ name: poll?.name || "Rankings", teams }] };
+		}
+
+		const url = this.buildEspnUrl(host, `/core/${league}/standings`, { xhr: 1 }, proxy);
+		const data = await this.fetchEspnCoreJson(url);
+		const groups = this.collectCoreStandingsGroups(data.content?.standings || {}, view);
+		return { isRankings: false, groups };
+	},
+
+	// The core standings page nests groups arbitrarily deep (conference -> division,
+	// or sometimes just one level) instead of the hidden API's fixed children/level
+	// shape, so this walks down to the leaf group(s) that actually hold team entries.
+	collectCoreStandingsGroups (node, view) {
+		const isLeaf = (n) => n.standings && n.standings.entries && (!n.groups || n.groups.length === 0);
+
+		if (view === "division") {
+			const groups = [];
+			const walk = (n) => {
+				if (isLeaf(n)) {
+					groups.push({
+						name: n.name || n.abbreviation || "",
+						teams: n.standings.entries.map((entry) => this.parseStandingsEntry(entry))
+					});
+					return;
+				}
+				for (const child of n.groups || []) {
+					walk(child);
+				}
+			};
+			walk(node);
+			return groups;
+		}
+
+		return (node.groups || []).map((conference) => {
+			const entries = [];
+			const collect = (n) => {
+				if (isLeaf(n)) {
+					entries.push(...n.standings.entries);
+					return;
+				}
+				for (const child of n.groups || []) {
+					collect(child);
+				}
+			};
+			collect(conference);
+			const parsed = entries.map((entry) => this.parseStandingsEntry(entry));
+			parsed.sort((a, b) => (parseFloat(b.stat) || 0) - (parseFloat(a.stat) || 0));
+			return { name: conference.name || conference.abbreviation || "", teams: parsed };
+		});
 	},
 
 	// ---------------------------------------------------------------------
