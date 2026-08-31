@@ -19,22 +19,12 @@ const ESPN_HEADERS = {
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // MLB and NHL both publish their own free, key-less, official APIs, so those two
-// sports don't need to go through ESPN at all. NBA/NCAAF/NCAAB use ESPN's public
+// sports don't need to go through ESPN at all. The rest use ESPN's public
 // website data (cdn.espn.com "core" pages) rather than the hidden mobile API
-// (site.api.espn.com), since Akamai blocks that one but not this one. NFL's game
-// data comes from TheSportsDB instead (see the NFL section below) since ESPN's
-// core pages proved unreliable there in practice; NFL standings stay on ESPN's
-// core pages since TheSportsDB gates standings behind a paid tier.
-const GAME_PROVIDERS = {
-	"baseball/mlb": "mlb",
-	"hockey/nhl": "nhl",
-	"football/nfl": "sportsdb",
-	"basketball/nba": "espn-core",
-	"football/college-football": "espn-core",
-	"basketball/mens-college-basketball": "espn-core"
-};
-
-const STANDINGS_PROVIDERS = {
+// (site.api.espn.com), since Akamai blocks that one but not this one - and,
+// unlike the free tier of alternatives such as TheSportsDB (which silently
+// omits most of a day's games), it's actually complete when it works.
+const NATIVE_PROVIDERS = {
 	"baseball/mlb": "mlb",
 	"hockey/nhl": "nhl",
 	"football/nfl": "espn-core",
@@ -56,45 +46,6 @@ const RANKINGS_SUPPORTED_LEAGUES = new Set(["college-football"]);
 
 const toIsoDate = (yyyymmdd) => `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 
-const SPORTSDB_KEY = "3";
-const SPORTSDB_LEAGUE_IDS = { nfl: "4391" };
-const SPORTSDB_FINAL_STATUSES = new Set(["FT", "AOT", "AET", "PEN"]);
-
-const NFL_TEAM_ABBREVIATIONS = {
-	"Arizona Cardinals": "ARI",
-	"Atlanta Falcons": "ATL",
-	"Baltimore Ravens": "BAL",
-	"Buffalo Bills": "BUF",
-	"Carolina Panthers": "CAR",
-	"Chicago Bears": "CHI",
-	"Cincinnati Bengals": "CIN",
-	"Cleveland Browns": "CLE",
-	"Dallas Cowboys": "DAL",
-	"Denver Broncos": "DEN",
-	"Detroit Lions": "DET",
-	"Green Bay Packers": "GB",
-	"Houston Texans": "HOU",
-	"Indianapolis Colts": "IND",
-	"Jacksonville Jaguars": "JAX",
-	"Kansas City Chiefs": "KC",
-	"Las Vegas Raiders": "LV",
-	"Los Angeles Chargers": "LAC",
-	"Los Angeles Rams": "LAR",
-	"Miami Dolphins": "MIA",
-	"Minnesota Vikings": "MIN",
-	"New England Patriots": "NE",
-	"New Orleans Saints": "NO",
-	"New York Giants": "NYG",
-	"New York Jets": "NYJ",
-	"Philadelphia Eagles": "PHI",
-	"Pittsburgh Steelers": "PIT",
-	"San Francisco 49ers": "SF",
-	"Seattle Seahawks": "SEA",
-	"Tampa Bay Buccaneers": "TB",
-	"Tennessee Titans": "TEN",
-	"Washington Commanders": "WAS"
-};
-
 module.exports = NodeHelper.create({
 	start () {
 		Log.log(`Starting node helper for: ${this.name}`);
@@ -110,12 +61,8 @@ module.exports = NodeHelper.create({
 		}
 	},
 
-	getGameProvider (sport, league) {
-		return GAME_PROVIDERS[`${sport}/${league}`] || "espn";
-	},
-
-	getStandingsProvider (sport, league) {
-		return STANDINGS_PROVIDERS[`${sport}/${league}`] || "espn";
+	getProvider (sport, league) {
+		return NATIVE_PROVIDERS[`${sport}/${league}`] || "espn";
 	},
 
 	// Builds an ESPN URL against the given host, or - if an espnProxy is
@@ -135,15 +82,12 @@ module.exports = NodeHelper.create({
 	},
 
 	async fetchGamesForProvider (sport, league, date, top25, proxy) {
-		const provider = this.getGameProvider(sport, league);
+		const provider = this.getProvider(sport, league);
 		if (provider === "mlb") {
 			return this.fetchMlbGames(date);
 		}
 		if (provider === "nhl") {
 			return this.fetchNhlGames(date);
-		}
-		if (provider === "sportsdb") {
-			return this.fetchSportsDbGames(sport, league, date);
 		}
 		if (provider === "espn-core") {
 			return this.fetchEspnCoreGames(sport, league, date, top25, proxy);
@@ -211,7 +155,7 @@ module.exports = NodeHelper.create({
 
 	async fetchStandings (payload) {
 		const { sport, league, top25, view, espnProxy, requestId } = payload;
-		const provider = this.getStandingsProvider(sport, league);
+		const provider = this.getProvider(sport, league);
 
 		try {
 			let result;
@@ -566,67 +510,6 @@ module.exports = NodeHelper.create({
 			parsed.sort((a, b) => (parseFloat(b.stat) || 0) - (parseFloat(a.stat) || 0));
 			return { name: conference.name || conference.abbreviation || "", teams: parsed };
 		});
-	},
-
-	// ---------------------------------------------------------------------
-	// NFL - TheSportsDB (thesportsdb.com), a free public sports database. Uses
-	// the shared public demo key ("3"); standings aren't included since that's
-	// gated behind TheSportsDB's paid tier, so NFL standings still come from
-	// ESPN's core pages above.
-	// ---------------------------------------------------------------------
-
-	async fetchSportsDbJson (url) {
-		const maxAttempts = 3;
-		for (let attempt = 1; ; attempt++) {
-			try {
-				const response = await fetch(url);
-				if (!response.ok) {
-					throw new Error(`HTTP ${response.status}`);
-				}
-				return await response.json();
-			} catch (error) {
-				if (attempt >= maxAttempts) {
-					throw error;
-				}
-				await sleep(500 * attempt);
-			}
-		}
-	},
-
-	async fetchSportsDbGames (sport, league, date) {
-		const leagueId = SPORTSDB_LEAGUE_IDS[league];
-		const url = `https://www.thesportsdb.com/api/v1/json/${SPORTSDB_KEY}/eventsday.php?d=${toIsoDate(date)}&l=${leagueId}`;
-		const data = await this.fetchSportsDbJson(url);
-		return (data.events || []).map((event) => this.parseSportsDbGame(event, sport, league));
-	},
-
-	parseSportsDbGame (event, sport, league) {
-		const status = event.strStatus || "NS";
-		const state = status === "NS" ? "pre" : SPORTSDB_FINAL_STATUSES.has(status) ? "post" : "in";
-		const detail = state === "post" ? (status === "AOT" || status === "AET" ? "Final/OT" : "Final") : state === "in" ? status : "";
-
-		const sportsDbTeam = (name, badge, score) => ({
-			name: name || "TBD",
-			abbreviation: NFL_TEAM_ABBREVIATIONS[name] || (name || "TBD").slice(0, 3).toUpperCase(),
-			logo: badge || "",
-			score: String(score ?? "0"),
-			rank: null
-		});
-
-		return {
-			id: String(event.idEvent || ""),
-			sport: sport || "",
-			league: league || "",
-			url: event.idEvent ? `https://www.thesportsdb.com/event/${event.idEvent}` : "https://www.thesportsdb.com",
-			homeRank: 99,
-			awayRank: 99,
-			homeTeam: sportsDbTeam(event.strHomeTeam, event.strHomeTeamBadge, event.intHomeScore),
-			awayTeam: sportsDbTeam(event.strAwayTeam, event.strAwayTeamBadge, event.intAwayScore),
-			state,
-			detail,
-			eventDate: event.strTimestamp ? `${event.strTimestamp}Z` : "",
-			situation: null
-		};
 	},
 
 	// ---------------------------------------------------------------------
