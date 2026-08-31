@@ -1,5 +1,9 @@
+const { execFile } = require("child_process");
+const util = require("util");
 const NodeHelper = require("node_helper");
 const Log = require("logger");
+
+const execFileAsync = util.promisify(execFile);
 
 // A generic scraper-shaped request (Node's default fetch sends "User-Agent: node"
 // and little else) is an easy flag for ESPN/Akamai's bot detection. These headers
@@ -354,19 +358,26 @@ module.exports = NodeHelper.create({
 	// Akamai blocks that one from residential/datacenter IPs but not this one.
 	// ---------------------------------------------------------------------
 
-	// cdn.espn.com occasionally answers with an empty 202 "hold on" response
-	// instead of JSON (a soft Akamai throttle, not a real block - a plain
-	// retry after a short pause consistently succeeds), so every core-page
-	// fetch goes through this instead of a bare fetch()+response.json().
+	// cdn.espn.com's Akamai bot-mitigation regularly answers fetch()-based
+	// requests (both Node's own fetch and Cloudflare Workers') with an empty
+	// 202 "hold on" response, but never a plain curl process - curl's TLS/HTTP
+	// fingerprint apparently isn't in the bucket it's suspicious of. So every
+	// core-page request shells out to curl instead of using fetch directly.
+	async curlGetJson (url) {
+		const args = ["-s", "--compressed", "--max-time", "15"];
+		for (const [key, value] of Object.entries(ESPN_HEADERS)) {
+			args.push("-H", `${key}: ${value}`);
+		}
+		args.push(url);
+		const { stdout } = await execFileAsync("curl", args, { maxBuffer: 20 * 1024 * 1024 });
+		return JSON.parse(stdout);
+	},
+
 	async fetchEspnCoreJson (url) {
 		const maxAttempts = 5;
 		for (let attempt = 1; ; attempt++) {
 			try {
-				const response = await fetch(url, { headers: ESPN_HEADERS });
-				if (!response.ok) {
-					throw new Error(`HTTP ${response.status}`);
-				}
-				return await response.json();
+				return await this.curlGetJson(url);
 			} catch (error) {
 				if (attempt >= maxAttempts) {
 					throw error;
