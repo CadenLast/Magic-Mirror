@@ -81,7 +81,28 @@ module.exports = NodeHelper.create({
 		return url.toString();
 	},
 
+	// ESPN's core pages have an irreducible rate of transient failures no amount
+	// of retrying fully eliminates. Rather than let one bad refresh cycle wipe
+	// out a league's games/standings, fall back to the last successful result
+	// for that exact query - a refresh showing slightly-stale-but-correct data
+	// beats one showing nothing.
 	async fetchGamesForProvider (sport, league, date, top25, proxy) {
+		const cacheKey = `${sport}/${league}/${date}/${top25}`;
+		this.gamesCache = this.gamesCache || {};
+		try {
+			const games = await this.fetchGamesForProviderUncached(sport, league, date, top25, proxy);
+			this.gamesCache[cacheKey] = games;
+			return games;
+		} catch (error) {
+			if (this.gamesCache[cacheKey]) {
+				Log.warn(`${this.name}: Using cached games for ${sport}/${league} after fetch failure: ${error.message}`);
+				return this.gamesCache[cacheKey];
+			}
+			throw error;
+		}
+	},
+
+	async fetchGamesForProviderUncached (sport, league, date, top25, proxy) {
 		const provider = this.getProvider(sport, league);
 		if (provider === "mlb") {
 			return this.fetchMlbGames(date);
@@ -155,24 +176,36 @@ module.exports = NodeHelper.create({
 
 	async fetchStandings (payload) {
 		const { sport, league, top25, view, espnProxy, requestId } = payload;
-		const provider = this.getProvider(sport, league);
+		const cacheKey = `${sport}/${league}/${top25}/${view}`;
+		this.standingsCache = this.standingsCache || {};
 
 		try {
-			let result;
-			if (provider === "mlb") {
-				result = await this.fetchMlbStandings(view);
-			} else if (provider === "nhl") {
-				result = await this.fetchNhlStandings(view);
-			} else if (provider === "espn-core") {
-				result = await this.fetchEspnCoreStandings(league, top25, view, espnProxy);
-			} else {
-				result = await this.fetchEspnStandings(sport, league, top25, view, espnProxy);
-			}
+			const result = await this.fetchStandingsUncached(sport, league, top25, view, espnProxy);
+			this.standingsCache[cacheKey] = result;
 			this.sendSocketNotification("STANDINGS_DATA", { ...result, requestId });
 		} catch (error) {
+			if (this.standingsCache[cacheKey]) {
+				Log.warn(`${this.name}: Using cached standings for ${sport}/${league} after fetch failure: ${error.message}`);
+				this.sendSocketNotification("STANDINGS_DATA", { ...this.standingsCache[cacheKey], requestId });
+				return;
+			}
 			Log.error(`${this.name}: Error fetching standings:`, error.message);
 			this.sendSocketNotification("STANDINGS_ERROR", { message: error.message, requestId });
 		}
+	},
+
+	async fetchStandingsUncached (sport, league, top25, view, espnProxy) {
+		const provider = this.getProvider(sport, league);
+		if (provider === "mlb") {
+			return this.fetchMlbStandings(view);
+		}
+		if (provider === "nhl") {
+			return this.fetchNhlStandings(view);
+		}
+		if (provider === "espn-core") {
+			return this.fetchEspnCoreStandings(league, top25, view, espnProxy);
+		}
+		return this.fetchEspnStandings(sport, league, top25, view, espnProxy);
 	},
 
 	// ---------------------------------------------------------------------
