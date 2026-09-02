@@ -130,16 +130,17 @@ let config = {
 			module: "MMM-SportsScores",
 			position: "top_left",
 			config: {
+				// NFL/NBA/NCAAF/NCAAB all depend on ESPN's core pages, which have
+				// proven unreliable on this network (bursts of requests trigger a
+				// multi-minute lockout). Limiting to MLB/NHL, which use their own
+				// official APIs and don't have this problem, until either ESPN's
+				// access is fixed or a paid data source replaces it.
+				sports: [
+					{ label: "MLB", icon: "⚾", sport: "baseball", league: "mlb" },
+					{ label: "NHL", icon: "🏒", sport: "hockey", league: "nhl" }
+				],
 				favoriteTeams: [
-					{ team: "Bears", sport: "football", league: "nfl" },
-					{ team: "Bulls", sport: "basketball", league: "nba" },
-					{ team: "Cubs", sport: "baseball", league: "mlb" },
-					{ team: "Iowa State", sport: "football", league: "college-football" },
-					{ team: "Hawkeyes", sport: "football", league: "college-football" },
-					{ team: "Hawkeyes", sport: "basketball", league: "mens-college-basketball" },
-					{ team: "Iowa State", sport: "basketball", league: "mens-college-basketball" },
-					{ team: "Drake", sport: "basketball", league: "mens-college-basketball" },
-					{ team: "Northern Iowa", sport: "basketball", league: "mens-college-basketball" }
+					{ team: "Cubs", sport: "baseball", league: "mlb" }
 				],
 			}
 		},
