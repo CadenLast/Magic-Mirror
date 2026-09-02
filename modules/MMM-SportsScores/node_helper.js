@@ -6,14 +6,14 @@ const Log = require("logger");
 const execFileAsync = util.promisify(execFile);
 
 // A generic scraper-shaped request (Node's default fetch sends "User-Agent: node"
-// and little else) is an easy flag for ESPN/Akamai's bot detection. These headers
-// make the request look like it came from a real browser loading espn.com itself.
+// and little else) is an easy flag for ESPN/Akamai's bot detection, so this sends
+// a browser-looking User-Agent. Deliberately NOT sending Accept/Accept-Language/
+// Referer/Origin alongside it - confirmed via direct testing that this specific
+// combination (without the matching sec-fetch-*/sec-ch-ua headers a real browser
+// would also send) gets an empty response on at least one real network, while
+// User-Agent alone - or paired with just one of those headers - works reliably.
 const ESPN_HEADERS = {
-	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
-	Accept: "application/json, text/plain, */*",
-	"Accept-Language": "en-US,en;q=0.9",
-	Referer: "https://www.espn.com/",
-	Origin: "https://www.espn.com"
+	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
