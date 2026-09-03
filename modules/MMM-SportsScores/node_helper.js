@@ -601,6 +601,24 @@ module.exports = NodeHelper.create({
 		return (data.data || []).map((game) => this.parseBalldontlieGame(game, sport, league));
 	},
 
+	// The in-app game popup renders in an iframe, and ESPN's CSP (frame-ancestors)
+	// blocks being embedded from any non-ESPN origin, so an espn.com link never
+	// actually shows anything there regardless of how correct it is. nfl.com has
+	// no such restriction and its regular-season game URLs follow a verified,
+	// predictable pattern; postseason uses a different scheme this doesn't try
+	// to guess, so those fall back to the (still embeddable) general scores page.
+	balldontlieGameUrl (league, game) {
+		if (league === "nfl" && !game.postseason && game.home_team?.name && game.visitor_team?.name) {
+			const away = game.visitor_team.name.toLowerCase();
+			const home = game.home_team.name.toLowerCase();
+			return `https://www.nfl.com/games/${away}-at-${home}-${game.season}-reg-${game.week}`;
+		}
+		if (league === "nfl") {
+			return "https://www.nfl.com/scores";
+		}
+		return `https://www.espn.com/${league}/scoreboard`;
+	},
+
 	parseBalldontlieGame (game, sport, league) {
 		const state = game.status_state === "scheduled" ? "pre" : game.status_state === "final" ? "post" : "in";
 
@@ -616,7 +634,7 @@ module.exports = NodeHelper.create({
 			id: String(game.id || ""),
 			sport: sport || "",
 			league: league || "",
-			url: `https://www.espn.com/${league}/scoreboard`,
+			url: this.balldontlieGameUrl(league, game),
 			homeRank: 99,
 			awayRank: 99,
 			homeTeam: balldontlieTeam(game.home_team, game.home_team_score),
