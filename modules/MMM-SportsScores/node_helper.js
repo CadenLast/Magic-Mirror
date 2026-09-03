@@ -54,6 +54,15 @@ const BALLDONTLIE_LEAGUE_PATHS = {
 	nba: "nba"
 };
 
+// balldontlie doesn't include team logos, but ESPN's static logo CDN is just
+// image assets (not an API endpoint), so it isn't affected by the reliability
+// problems that ruled ESPN out for game/score data. It uses lowercase team
+// abbreviations that match balldontlie's almost exactly - these two are the
+// only exceptions, confirmed by testing every current NFL/NBA team directly.
+const ESPN_LOGO_SLUG_OVERRIDES = {
+	nba: { NOP: "no", UTA: "utah" }
+};
+
 const toIsoDate = (yyyymmdd) => `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 
 module.exports = NodeHelper.create({
@@ -575,6 +584,12 @@ module.exports = NodeHelper.create({
 	// pages regardless of whether a balldontlie key is configured.
 	// ---------------------------------------------------------------------
 
+	espnLogoUrl (league, abbreviation) {
+		const overrides = ESPN_LOGO_SLUG_OVERRIDES[league] || {};
+		const slug = (overrides[abbreviation] || abbreviation).toLowerCase();
+		return `https://a.espncdn.com/i/teamlogos/${league}/500/${slug}.png`;
+	},
+
 	async fetchBalldontlieGames (sport, league, date, apiKey) {
 		const leaguePath = BALLDONTLIE_LEAGUE_PATHS[league];
 		const url = `https://api.balldontlie.io/${leaguePath}/v1/games?dates[]=${toIsoDate(date)}`;
@@ -592,7 +607,7 @@ module.exports = NodeHelper.create({
 		const balldontlieTeam = (team, score) => ({
 			name: team?.full_name || "TBD",
 			abbreviation: team?.abbreviation || "TBD",
-			logo: "",
+			logo: team?.abbreviation ? this.espnLogoUrl(league, team.abbreviation) : "",
 			score: String(score ?? "0"),
 			rank: null
 		});
