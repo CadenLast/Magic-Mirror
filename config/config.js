@@ -1,3 +1,10 @@
+// MagicMirror loads this file by reading it as a string and compiling it with
+// an empty filename (see js/utils.js requireFromString), so a normal relative
+// require("./keys") has no real path to resolve against - global.root_path
+// (set by MagicMirror itself before config loading) gives an absolute path
+// that works regardless of where MagicMirror is actually installed.
+const keys = require(`${global.root_path}/config/keys.js`);
+
 let config = {
 	address: "localhost",	// Address to listen on, can be:
 							// - "localhost", "127.0.0.1", "::1" to listen on loopback interface
@@ -130,18 +137,26 @@ let config = {
 			module: "MMM-SportsScores",
 			position: "top_left",
 			config: {
-				// NFL/NBA/NCAAF/NCAAB all depend on ESPN's core pages, which have
-				// proven unreliable on this network (bursts of requests trigger a
-				// multi-minute lockout). Limiting to MLB/NHL, which use their own
-				// official APIs and don't have this problem, until either ESPN's
-				// access is fixed or a paid data source replaces it.
+				// NFL and NBA are back via balldontlie.io (a licensed API with a real,
+				// published rate limit - see config/keys.js, gitignored). NCAAF/NCAAB
+				// game/score data still depends on ESPN's core pages (unreliable on
+				// this network) since balldontlie's free tier gates their Games
+				// endpoint behind a paid plan - but Standings is free there, so at
+				// least NCAAF/NCAAB standings are solid even though scores aren't.
 				sports: [
+					{ label: "NFL", icon: "🏈", sport: "football", league: "nfl" },
+					{ label: "NBA", icon: "🏀", sport: "basketball", league: "nba" },
 					{ label: "MLB", icon: "⚾", sport: "baseball", league: "mlb" },
-					{ label: "NHL", icon: "🏒", sport: "hockey", league: "nhl" }
+					{ label: "NHL", icon: "🏒", sport: "hockey", league: "nhl" },
+					{ label: "NCAAF", icon: "🏈", sport: "football", league: "college-football" },
+					{ label: "NCAAB", icon: "🏀", sport: "basketball", league: "mens-college-basketball" }
 				],
 				favoriteTeams: [
+					{ team: "Bears", sport: "football", league: "nfl" },
+					{ team: "Bulls", sport: "basketball", league: "nba" },
 					{ team: "Cubs", sport: "baseball", league: "mlb" }
 				],
+				balldontlieKeys: keys.balldontlie
 			}
 		},
 		{
