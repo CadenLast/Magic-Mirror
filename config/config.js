@@ -1,4 +1,9 @@
-const keys = require("./keys");
+// MagicMirror loads this file by reading it as a string and compiling it with
+// an empty filename (see js/utils.js requireFromString), so a normal relative
+// require("./keys") has no real path to resolve against - global.root_path
+// (set by MagicMirror itself before config loading) gives an absolute path
+// that works regardless of where MagicMirror is actually installed.
+const keys = require(`${global.root_path}/config/keys.js`);
 
 let config = {
 	address: "localhost",	// Address to listen on, can be:
