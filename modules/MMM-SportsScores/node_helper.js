@@ -68,16 +68,18 @@ const BALLDONTLIE_STANDINGS_LEAGUE_PATHS = {
 // narrows it down to the FBS ones the module actually covers elsewhere.
 const NCAAF_FBS_CONFERENCES = new Set(["ACC", "American", "Big 12", "Big Ten", "CUSA", "FBS Indep.", "MAC", "Mountain West", "Pac-12", "SEC", "Sun Belt"]);
 
-// The free tier is 5 requests/min, and standings need one request per
-// conference - space sequential conference fetches out to safely stay under
-// that limit instead of hitting a 429 partway through.
-const BALLDONTLIE_STANDINGS_REQUEST_GAP_MS = 15000;
-
 // Conference standings change slowly (at most once a week, when games are
 // played) and a full refresh takes minutes given the per-conference rate
 // limit, so this is fetched in the background on a long interval rather than
 // live per-request.
 const BALLDONTLIE_STANDINGS_TTL_MS = 30 * 60 * 1000;
+
+// balldontlie's published free-tier limit is 5 requests/min per key. This is a
+// hard cap on OUR OWN usage, enforced globally per API key value across every
+// feature (games, favorites, standings background refresh) - not per-feature
+// spacing, which could still add up past the real limit if multiple features
+// share a key. Capped below the real limit as safety margin.
+const BALLDONTLIE_MAX_REQUESTS_PER_MINUTE = 4;
 
 // balldontlie doesn't include team logos, but ESPN's static logo CDN is just
 // image assets (not an API endpoint), so it isn't affected by the reliability
@@ -627,10 +629,44 @@ module.exports = NodeHelper.create({
 		return `https://a.espncdn.com/i/teamlogos/${league}/500/${slug}.png`;
 	},
 
+	// Hard caps OUR OWN request rate per API key value, globally across every
+	// feature that uses balldontlie (games, favorites, standings background
+	// refresh) - not per-feature spacing, which could still add up past the
+	// real 5/min limit if multiple features happen to share a key. Every
+	// balldontlie call goes through this rather than calling fetch() directly.
+	async throttleBalldontlie (apiKey) {
+		this.balldontlieRequestLog = this.balldontlieRequestLog || {};
+		const now = Date.now();
+		const recent = (this.balldontlieRequestLog[apiKey] || []).filter((t) => now - t < 60000);
+
+		if (recent.length >= BALLDONTLIE_MAX_REQUESTS_PER_MINUTE) {
+			const waitMs = 60000 - (now - recent[0]) + 250;
+			Log.warn(`${this.name}: balldontlie request throttled - waiting ${Math.ceil(waitMs / 1000)}s to stay under ${BALLDONTLIE_MAX_REQUESTS_PER_MINUTE}/min`);
+			await sleep(waitMs);
+			return this.throttleBalldontlie(apiKey);
+		}
+
+		recent.push(Date.now());
+		this.balldontlieRequestLog[apiKey] = recent;
+	},
+
+	async balldontlieFetch (apiKey, url) {
+		await this.throttleBalldontlie(apiKey);
+		let response = await fetch(url, { headers: { Authorization: apiKey } });
+		if (response.status === 429) {
+			// Shouldn't normally happen given the throttle above, but as a last
+			// resort (e.g. the same key used elsewhere at the same time) wait out
+			// a full window and retry once rather than just failing outright.
+			await sleep(60000);
+			response = await fetch(url, { headers: { Authorization: apiKey } });
+		}
+		return response;
+	},
+
 	async fetchBalldontlieGames (sport, league, date, apiKey) {
 		const leaguePath = BALLDONTLIE_LEAGUE_PATHS[league];
 		const url = `https://api.balldontlie.io/${leaguePath}/v1/games?dates[]=${toIsoDate(date)}`;
-		const response = await fetch(url, { headers: { Authorization: apiKey } });
+		const response = await this.balldontlieFetch(apiKey, url);
 		if (!response.ok) {
 			throw new Error(`HTTP ${response.status}`);
 		}
@@ -717,7 +753,8 @@ module.exports = NodeHelper.create({
 		try {
 			const leaguePath = BALLDONTLIE_STANDINGS_LEAGUE_PATHS[league];
 			const season = new Date().getFullYear();
-			const conferencesResponse = await fetch(`https://api.balldontlie.io/${leaguePath}/v1/conferences`, { headers: { Authorization: apiKey } });
+			const conferencesUrl = `https://api.balldontlie.io/${leaguePath}/v1/conferences`;
+			const conferencesResponse = await this.balldontlieFetch(apiKey, conferencesUrl);
 			if (!conferencesResponse.ok) {
 				throw new Error(`HTTP ${conferencesResponse.status}`);
 			}
@@ -728,19 +765,9 @@ module.exports = NodeHelper.create({
 			}
 
 			const groups = [];
-			for (let i = 0; i < conferences.length; i++) {
-				if (i > 0) {
-					await sleep(BALLDONTLIE_STANDINGS_REQUEST_GAP_MS);
-				}
-				const conference = conferences[i];
+			for (const conference of conferences) {
 				const url = `https://api.balldontlie.io/${leaguePath}/v1/standings?conference_id=${conference.id}&season=${season}`;
-				let response = await fetch(url, { headers: { Authorization: apiKey } });
-				if (response.status === 429) {
-					// A transient rate-limit hit shouldn't cost this conference an
-					// entire TTL cycle (up to 30 min) - wait it out once and retry.
-					await sleep(BALLDONTLIE_STANDINGS_REQUEST_GAP_MS);
-					response = await fetch(url, { headers: { Authorization: apiKey } });
-				}
+				const response = await this.balldontlieFetch(apiKey, url);
 				if (!response.ok) {
 					Log.warn(`${this.name}: Skipping ${conference.name} standings after HTTP ${response.status}`);
 					continue;
