@@ -1,3 +1,5 @@
+const keys = require("./keys");
+
 let config = {
 	address: "localhost",	// Address to listen on, can be:
 							// - "localhost", "127.0.0.1", "::1" to listen on loopback interface
@@ -130,18 +132,24 @@ let config = {
 			module: "MMM-SportsScores",
 			position: "top_left",
 			config: {
-				// NFL/NBA/NCAAF/NCAAB all depend on ESPN's core pages, which have
-				// proven unreliable on this network (bursts of requests trigger a
-				// multi-minute lockout). Limiting to MLB/NHL, which use their own
-				// official APIs and don't have this problem, until either ESPN's
-				// access is fixed or a paid data source replaces it.
+				// NFL and NBA are back via balldontlie.io (a licensed API with a real,
+				// published rate limit - see config/keys.js, gitignored). NCAAF/NCAAB
+				// still depend on ESPN's core pages, which have proven unreliable on
+				// this network (bursts of requests trigger a multi-minute lockout), so
+				// they stay off until either that's fixed or they get their own
+				// balldontlie key too.
 				sports: [
+					{ label: "NFL", icon: "🏈", sport: "football", league: "nfl" },
+					{ label: "NBA", icon: "🏀", sport: "basketball", league: "nba" },
 					{ label: "MLB", icon: "⚾", sport: "baseball", league: "mlb" },
 					{ label: "NHL", icon: "🏒", sport: "hockey", league: "nhl" }
 				],
 				favoriteTeams: [
+					{ team: "Bears", sport: "football", league: "nfl" },
+					{ team: "Bulls", sport: "basketball", league: "nba" },
 					{ team: "Cubs", sport: "baseball", league: "mlb" }
 				],
+				balldontlieKeys: keys.balldontlie
 			}
 		},
 		{

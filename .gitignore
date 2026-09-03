@@ -77,3 +77,6 @@ yarn.lock
 
 # Vitest temporary test files
 tests/**/.tmp/
+
+# Local API keys/secrets referenced by config/config.js - never commit these
+config/keys.js

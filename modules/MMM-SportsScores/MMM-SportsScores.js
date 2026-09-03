@@ -23,7 +23,11 @@ Module.register("MMM-SportsScores", {
 		espnProxy: {
 			url: "",
 			key: ""
-		}
+		},
+		// Optional: balldontlie.io API keys, one per sport/league (its free tier
+		// scopes a key to a single sport). Used for game/score data on sports
+		// listed here instead of ESPN; e.g. { nfl: "...", nba: "..." }.
+		balldontlieKeys: {}
 	},
 
 	getScripts () {
@@ -560,6 +564,7 @@ Module.register("MMM-SportsScores", {
 			date: targetDate,
 			top25: sport.top25 || false,
 			espnProxy: this.config.espnProxy,
+			balldontlieKeys: this.config.balldontlieKeys,
 			requestId: this.requestId
 		});
 	},
@@ -572,6 +577,7 @@ Module.register("MMM-SportsScores", {
 			date: targetDate,
 			favorites: this.config.favoriteTeams,
 			espnProxy: this.config.espnProxy,
+			balldontlieKeys: this.config.balldontlieKeys,
 			requestId: this.favoritesRequestId
 		});
 	},
