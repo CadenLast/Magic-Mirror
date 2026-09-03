@@ -90,17 +90,17 @@ let config = {
 				timeFormat: 12
 			}
 		},
-		{
-			module: "MMM-Radar",
-			position: "top_left",
-			config: {
-				lat: 41.7268,
-				lon: -93.6043,
-				zoom: 6.5,
-				width: "480px",
-				height: "360px"
-			}
-		},
+		// {
+		// 	module: "MMM-Radar",
+		// 	position: "top_left",
+		// 	config: {
+		// 		lat: 41.7268,
+		// 		lon: -93.6043,
+		// 		zoom: 6.5,
+		// 		width: "480px",
+		// 		height: "360px"
+		// 	}
+		// },
 		{
 			module: "MMM-WeekCalendar",
 			position: "bottom_bar",
@@ -139,15 +139,17 @@ let config = {
 			config: {
 				// NFL and NBA are back via balldontlie.io (a licensed API with a real,
 				// published rate limit - see config/keys.js, gitignored). NCAAF/NCAAB
-				// still depend on ESPN's core pages, which have proven unreliable on
-				// this network (bursts of requests trigger a multi-minute lockout), so
-				// they stay off until either that's fixed or they get their own
-				// balldontlie key too.
+				// game/score data still depends on ESPN's core pages (unreliable on
+				// this network) since balldontlie's free tier gates their Games
+				// endpoint behind a paid plan - but Standings is free there, so at
+				// least NCAAF/NCAAB standings are solid even though scores aren't.
 				sports: [
 					{ label: "NFL", icon: "🏈", sport: "football", league: "nfl" },
 					{ label: "NBA", icon: "🏀", sport: "basketball", league: "nba" },
 					{ label: "MLB", icon: "⚾", sport: "baseball", league: "mlb" },
-					{ label: "NHL", icon: "🏒", sport: "hockey", league: "nhl" }
+					{ label: "NHL", icon: "🏒", sport: "hockey", league: "nhl" },
+					{ label: "NCAAF", icon: "🏈", sport: "football", league: "college-football" },
+					{ label: "NCAAB", icon: "🏀", sport: "basketball", league: "mens-college-basketball" }
 				],
 				favoriteTeams: [
 					{ team: "Bears", sport: "football", league: "nfl" },

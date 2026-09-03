@@ -54,6 +54,31 @@ const BALLDONTLIE_LEAGUE_PATHS = {
 	nba: "nba"
 };
 
+// balldontlie's Games/Rankings endpoints for NCAAF/NCAAB need a paid tier, but
+// Standings is free - confirmed directly against their docs (ncaaf/ncaab
+// .balldontlie.io) and by testing. Standings there are queried per-conference
+// though (no "all conferences" option), so a full refresh needs one request
+// per conference.
+const BALLDONTLIE_STANDINGS_LEAGUE_PATHS = {
+	"college-football": "ncaaf",
+	"mens-college-basketball": "ncaab"
+};
+
+// balldontlie's NCAAF conferences include FCS (second-tier) conferences; this
+// narrows it down to the FBS ones the module actually covers elsewhere.
+const NCAAF_FBS_CONFERENCES = new Set(["ACC", "American", "Big 12", "Big Ten", "CUSA", "FBS Indep.", "MAC", "Mountain West", "Pac-12", "SEC", "Sun Belt"]);
+
+// The free tier is 5 requests/min, and standings need one request per
+// conference - space sequential conference fetches out to safely stay under
+// that limit instead of hitting a 429 partway through.
+const BALLDONTLIE_STANDINGS_REQUEST_GAP_MS = 15000;
+
+// Conference standings change slowly (at most once a week, when games are
+// played) and a full refresh takes minutes given the per-conference rate
+// limit, so this is fetched in the background on a long interval rather than
+// live per-request.
+const BALLDONTLIE_STANDINGS_TTL_MS = 30 * 60 * 1000;
+
 // balldontlie doesn't include team logos, but ESPN's static logo CDN is just
 // image assets (not an API endpoint), so it isn't affected by the reliability
 // problems that ruled ESPN out for game/score data. It uses lowercase team
@@ -85,10 +110,19 @@ module.exports = NodeHelper.create({
 	},
 
 	// Games/scores prefer balldontlie over the default provider when a key is
-	// configured for that league - standings always use getProvider above,
-	// regardless, since balldontlie's free tier doesn't include standings.
+	// configured for that league - games and standings are gated independently
+	// on balldontlie's free tier (e.g. NFL/NBA standings need a paid tier, but
+	// NCAAF/NCAAB standings are free even though their games aren't), so this
+	// and getStandingsProvider below check different league maps.
 	getGameProvider (sport, league, balldontlieKeys) {
 		if (BALLDONTLIE_LEAGUE_PATHS[league] && balldontlieKeys && balldontlieKeys[league]) {
+			return "balldontlie";
+		}
+		return this.getProvider(sport, league);
+	},
+
+	getStandingsProvider (sport, league, balldontlieKeys) {
+		if (BALLDONTLIE_STANDINGS_LEAGUE_PATHS[league] && balldontlieKeys && balldontlieKeys[league]) {
 			return "balldontlie";
 		}
 		return this.getProvider(sport, league);
@@ -207,12 +241,12 @@ module.exports = NodeHelper.create({
 	},
 
 	async fetchStandings (payload) {
-		const { sport, league, top25, view, espnProxy, requestId } = payload;
+		const { sport, league, top25, view, espnProxy, balldontlieKeys, requestId } = payload;
 		const cacheKey = `${sport}/${league}/${top25}/${view}`;
 		this.standingsCache = this.standingsCache || {};
 
 		try {
-			const result = await this.fetchStandingsUncached(sport, league, top25, view, espnProxy);
+			const result = await this.fetchStandingsUncached(sport, league, top25, view, espnProxy, balldontlieKeys);
 			this.standingsCache[cacheKey] = result;
 			this.sendSocketNotification("STANDINGS_DATA", { ...result, requestId });
 		} catch (error) {
@@ -226,13 +260,16 @@ module.exports = NodeHelper.create({
 		}
 	},
 
-	async fetchStandingsUncached (sport, league, top25, view, espnProxy) {
-		const provider = this.getProvider(sport, league);
+	async fetchStandingsUncached (sport, league, top25, view, espnProxy, balldontlieKeys) {
+		const provider = this.getStandingsProvider(sport, league, balldontlieKeys);
 		if (provider === "mlb") {
 			return this.fetchMlbStandings(view);
 		}
 		if (provider === "nhl") {
 			return this.fetchNhlStandings(view);
+		}
+		if (provider === "balldontlie") {
+			return this.fetchBalldontlieStandings(league, balldontlieKeys[league]);
 		}
 		if (provider === "espn-core") {
 			return this.fetchEspnCoreStandings(league, top25, view, espnProxy);
@@ -643,6 +680,93 @@ module.exports = NodeHelper.create({
 			detail: game.status || "",
 			eventDate: (league === "nba" ? game.datetime : game.date) || "",
 			situation: null
+		};
+	},
+
+	// ---------------------------------------------------------------------
+	// NCAAF/NCAAB standings - also balldontlie, but queried per-conference with
+	// no "all conferences" option, so a full refresh needs many sequential
+	// requests. Fetched in the background on a long interval (see the TTL/gap
+	// constants above) rather than live per-request; fetchBalldontlieStandings
+	// just serves whatever's cached and kicks off a refresh if it's stale.
+	// ---------------------------------------------------------------------
+
+	async fetchBalldontlieStandings (league, apiKey) {
+		this.balldontlieStandingsCache = this.balldontlieStandingsCache || {};
+		const cached = this.balldontlieStandingsCache[league];
+		const isStale = !cached || Date.now() - cached.fetchedAt > BALLDONTLIE_STANDINGS_TTL_MS;
+
+		if (isStale) {
+			this.refreshBalldontlieStandings(league, apiKey);
+		}
+
+		if (!cached) {
+			throw new Error("Standings are still loading for the first time - this can take a few minutes");
+		}
+
+		return { isRankings: false, groups: cached.groups };
+	},
+
+	async refreshBalldontlieStandings (league, apiKey) {
+		this.balldontlieStandingsRefreshing = this.balldontlieStandingsRefreshing || {};
+		if (this.balldontlieStandingsRefreshing[league]) {
+			return;
+		}
+		this.balldontlieStandingsRefreshing[league] = true;
+
+		try {
+			const leaguePath = BALLDONTLIE_STANDINGS_LEAGUE_PATHS[league];
+			const season = new Date().getFullYear();
+			const conferencesResponse = await fetch(`https://api.balldontlie.io/${leaguePath}/v1/conferences`, { headers: { Authorization: apiKey } });
+			if (!conferencesResponse.ok) {
+				throw new Error(`HTTP ${conferencesResponse.status}`);
+			}
+			const conferencesData = await conferencesResponse.json();
+			let conferences = conferencesData.data || [];
+			if (league === "college-football") {
+				conferences = conferences.filter((c) => NCAAF_FBS_CONFERENCES.has(c.name));
+			}
+
+			const groups = [];
+			for (let i = 0; i < conferences.length; i++) {
+				if (i > 0) {
+					await sleep(BALLDONTLIE_STANDINGS_REQUEST_GAP_MS);
+				}
+				const conference = conferences[i];
+				const url = `https://api.balldontlie.io/${leaguePath}/v1/standings?conference_id=${conference.id}&season=${season}`;
+				let response = await fetch(url, { headers: { Authorization: apiKey } });
+				if (response.status === 429) {
+					// A transient rate-limit hit shouldn't cost this conference an
+					// entire TTL cycle (up to 30 min) - wait it out once and retry.
+					await sleep(BALLDONTLIE_STANDINGS_REQUEST_GAP_MS);
+					response = await fetch(url, { headers: { Authorization: apiKey } });
+				}
+				if (!response.ok) {
+					Log.warn(`${this.name}: Skipping ${conference.name} standings after HTTP ${response.status}`);
+					continue;
+				}
+				const data = await response.json();
+				const teams = (data.data || []).map((entry) => this.parseBalldontlieStandingsEntry(entry));
+				groups.push({ name: conference.name, teams });
+			}
+
+			this.balldontlieStandingsCache[league] = { groups, fetchedAt: Date.now() };
+		} catch (error) {
+			Log.error(`${this.name}: Error refreshing balldontlie standings for ${league}:`, error.message);
+		} finally {
+			this.balldontlieStandingsRefreshing[league] = false;
+		}
+	},
+
+	parseBalldontlieStandingsEntry (entry) {
+		return {
+			seed: "",
+			name: entry.team?.full_name || "",
+			abbreviation: entry.team?.abbreviation || "",
+			logo: "",
+			record: `${entry.wins ?? 0}-${entry.losses ?? 0}`,
+			stat: entry.win_percentage != null ? entry.win_percentage.toFixed(3).replace(/^0\./, ".") : "",
+			gamesBehind: entry.games_behind != null ? String(entry.games_behind) : "-"
 		};
 	},
 
