@@ -254,7 +254,11 @@
 }
 
 .standings-row .scores-abbr {
-  flex: 0 0 4ch;
+  /* 5ch, not 4ch, since "ch" is based on the "0" character's width and some
+     real 4-letter college abbreviations (e.g. "TA&M", "MICH") are made of
+     wider letters that overflow a box sized for exactly 4 average-width
+     characters. */
+  flex: 0 0 5ch;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
