@@ -265,6 +265,12 @@
 }
 
 .standings-record {
+  /* Pins record/stat/gb (whichever of those are present) as a group to the
+     row's right edge instead of packing them immediately after the
+     abbreviation - so leagues with fewer columns (no games-behind, no logos)
+     spread across the full row width instead of leaving it dangling
+     mid-row with blank space past it. */
+  margin-left: auto;
   flex: 0 0 7ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
