@@ -60,6 +60,7 @@ const BALLDONTLIE_LEAGUE_PATHS = {
 // only publish weekly, so this is cached well past a single refresh cycle.
 const AP_POLL_LEAGUES = new Set(["college-football", "mens-college-basketball"]);
 const AP_POLL_TTL_MS = 60 * 60 * 1000;
+const CFBD_TEAMS_TTL_MS = 24 * 60 * 60 * 1000;
 
 // balldontlie's published free-tier limit is 5 requests/min per key. This is a
 // hard cap on OUR OWN usage, enforced globally per API key value across every
@@ -797,11 +798,36 @@ module.exports = NodeHelper.create({
 		return response.json();
 	},
 
+	// Team rosters/abbreviations/logos change essentially never within a
+	// season, so this is cached far longer than the poll itself - a real
+	// abbreviation (e.g. "OSU") instead of the full school name matters for
+	// fitting the standings column's abbreviation slot, which is sized for
+	// short codes.
+	async fetchCfbdTeamsLookup (league, apiKey) {
+		this.cfbdTeamsCache = this.cfbdTeamsCache || {};
+		const cached = this.cfbdTeamsCache[league];
+		if (cached && Date.now() - cached.fetchedAt < CFBD_TEAMS_TTL_MS) {
+			return cached.lookup;
+		}
+
+		const url = league === "college-football"
+			? `https://api.collegefootballdata.com/teams?year=${new Date().getFullYear()}`
+			: "https://api.collegebasketballdata.com/teams";
+		const teams = await this.fetchCfbdJson(url, apiKey);
+		const lookup = new Map(teams.map((t) => [t.school, { abbreviation: t.abbreviation || t.school, logo: (t.logos && t.logos[0]) || "" }]));
+
+		this.cfbdTeamsCache[league] = { lookup, fetchedAt: Date.now() };
+		return lookup;
+	},
+
 	// CFBD groups football rankings by week, with every poll (AP, Coaches,
 	// etc.) nested inside each week's entry.
 	async fetchCfbdFootballApPoll (apiKey) {
 		const year = new Date().getFullYear();
-		const data = await this.fetchCfbdJson(`https://api.collegefootballdata.com/rankings?year=${year}`, apiKey);
+		const [data, teamsLookup] = await Promise.all([
+			this.fetchCfbdJson(`https://api.collegefootballdata.com/rankings?year=${year}`, apiKey),
+			this.fetchCfbdTeamsLookup("college-football", apiKey)
+		]);
 		if (!data.length) {
 			throw new Error("No CFBD rankings data available");
 		}
@@ -810,7 +836,10 @@ module.exports = NodeHelper.create({
 		if (!apPoll) {
 			throw new Error("No AP Top 25 poll in latest CFBD week");
 		}
-		return apPoll.ranks.map((r) => ({ rank: r.rank, name: r.school, abbreviation: r.school, logo: "", record: "" }));
+		return apPoll.ranks.map((r) => {
+			const team = teamsLookup.get(r.school);
+			return { rank: r.rank, name: r.school, abbreviation: team?.abbreviation || r.school, logo: team?.logo || "", record: "" };
+		});
 	},
 
 	// CollegeBasketballData's /rankings returns a flat list of one row per
@@ -821,6 +850,7 @@ module.exports = NodeHelper.create({
 	// this tries the season that should be "current" by month first and
 	// falls back to the prior one if that's empty.
 	async fetchCfbdBasketballApPoll (apiKey) {
+		const teamsLookup = await this.fetchCfbdTeamsLookup("mens-college-basketball", apiKey);
 		const now = new Date();
 		const likelyCurrentSeason = now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear();
 		for (const season of [likelyCurrentSeason, likelyCurrentSeason - 1]) {
@@ -833,7 +863,10 @@ module.exports = NodeHelper.create({
 			return ranked
 				.filter((e) => e.week === latestWeek)
 				.sort((a, b) => a.ranking - b.ranking)
-				.map((r) => ({ rank: r.ranking, name: r.team, abbreviation: r.team, logo: "", record: "" }));
+				.map((r) => {
+					const team = teamsLookup.get(r.team);
+					return { rank: r.ranking, name: r.team, abbreviation: team?.abbreviation || r.team, logo: team?.logo || "", record: "" };
+				});
 		}
 		throw new Error("No CFBD/CBBD AP poll data available for either candidate season");
 	},
