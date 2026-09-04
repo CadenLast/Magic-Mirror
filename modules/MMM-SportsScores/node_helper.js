@@ -322,6 +322,7 @@ module.exports = NodeHelper.create({
 			}
 		});
 
+		const collegeGames = [];
 		const collegeFetches = (collegeTeams || []).map(async ({ sport, team }, index) => {
 			// Only worth staggering when a real fetch is about to happen - the
 			// schedule cache lasts hours, so on every refresh/day-switch after
@@ -336,7 +337,7 @@ module.exports = NodeHelper.create({
 			try {
 				const game = await this.fetchCollegeTeamGameForDate(sport, team, date, cfbdKey);
 				if (game) {
-					allGames.push(game);
+					collegeGames.push(game);
 				}
 			} catch (error) {
 				Log.error(`${this.name}: Error fetching college team favorite for ${sport}/${team}:`, error.message);
@@ -344,6 +345,12 @@ module.exports = NodeHelper.create({
 		});
 
 		await Promise.all([...fetches, ...collegeFetches]);
+		for (const sport of new Set((collegeTeams || []).map((t) => t.sport))) {
+			const relevantTeams = collegeTeams.filter((t) => t.sport === sport);
+			const bySport = collegeGames.filter((g) => g.sport === sport);
+			const marked = this.markTrackedTeamGames(bySport, relevantTeams);
+			allGames.push(...marked);
+		}
 		this.sendSocketNotification("FAVORITES_DATA", { games: this.dedupeGamesByMatchup(allGames), requestId });
 	},
 
@@ -981,7 +988,23 @@ module.exports = NodeHelper.create({
 			Log.error(`${this.name}: Error fetching ${t.sport}/${t.team} for the ${sport} tab:`, error.message);
 			return null;
 		})));
-		return this.dedupeGamesByMatchup(games.filter(Boolean));
+		const deduped = this.dedupeGamesByMatchup(games.filter(Boolean));
+		return this.markTrackedTeamGames(deduped, relevantTeams);
+	},
+
+	// A game's favoriteIsHome/favoriteIsAway are set when it's first fetched,
+	// from the perspective of whichever single team's schedule it came from -
+	// when two tracked teams play each other, only that one side ends up
+	// marked, even though the "opponent" is independently tracked too. This
+	// re-derives both flags from the full tracked-team list instead, so a
+	// matchup between two tracked teams correctly highlights both.
+	markTrackedTeamGames (games, relevantTeams) {
+		const trackedNames = new Set(relevantTeams.map((t) => t.team));
+		return games.map((game) => ({
+			...game,
+			favoriteIsHome: trackedNames.has(game.homeTeam.name),
+			favoriteIsAway: trackedNames.has(game.awayTeam.name)
+		}));
 	},
 
 	async fetchCollegeTeamGameForDate (sport, team, date, cfbdKey) {
