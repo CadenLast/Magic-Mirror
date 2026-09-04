@@ -257,14 +257,21 @@
 }
 
 .standings-row .scores-abbr {
-  /* 5ch, not 4ch, since "ch" is based on the "0" character's width and some
-     real 4-letter college abbreviations (e.g. "TA&M", "MICH") are made of
-     wider letters that overflow a box sized for exactly 4 average-width
-     characters. */
-  flex: 0 0 5ch;
+  /* NFL/NBA/MLB/NHL abbreviations are always 3 letters or fewer, so 4ch is
+     plenty and leaves less dead space than sizing every sport for the
+     widest case. */
+  flex: 0 0 4ch;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.standings-row .scores-abbr.standings-abbr-wide {
+  /* AP Top 25 rankings can have real 4-letter college abbreviations (e.g.
+     "TA&M", "MICH") - 5ch, not 4ch, since "ch" is based on the "0"
+     character's width and those are made of wider letters that overflow a
+     box sized for exactly 4 average-width characters. */
+  flex-basis: 5ch;
 }
 
 .standings-record {

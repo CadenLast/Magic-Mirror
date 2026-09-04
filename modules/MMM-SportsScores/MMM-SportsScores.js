@@ -373,7 +373,7 @@ Module.register("MMM-SportsScores", {
 					? ""
 					: `<span class="standings-stat">${this._escapeHtml(team.stat)}</span>
 					   ${gb}`;
-				const abbrClass = team.isFavorite ? "scores-abbr scores-favorite" : "scores-abbr";
+				const abbrClass = ["scores-abbr", this.isRankingsView ? "standings-abbr-wide" : "", team.isFavorite ? "scores-favorite" : ""].filter(Boolean).join(" ");
 				return `<div class="standings-row">
 					<span class="standings-rank">${rankOrSeed}</span>
 					${logo}
