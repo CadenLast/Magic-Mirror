@@ -95,6 +95,8 @@
             {% endif %}
             {% if error %}
               <div class="dimmed small scores-empty">Unable to load scores</div>
+            {% elif gamesLoading %}
+              <div class="dimmed small scores-empty">Loading scores&hellip;</div>
             {% elif games.length == 0 and favorites.length == 0 %}
               <div class="dimmed small scores-empty">No games scheduled</div>
             {% endif %}

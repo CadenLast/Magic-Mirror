@@ -54,6 +54,7 @@ Module.register("MMM-SportsScores", {
 		this.activeSportIndex = 0;
 		this.games = [];
 		this.loaded = false;
+		this.gamesLoading = false;
 		this.error = null;
 		this.requestId = null;
 		this.favoriteGames = [];
@@ -180,6 +181,7 @@ Module.register("MMM-SportsScores", {
 			activeSportIndex: this.activeSportIndex,
 			favorites: favorites,
 			games: games,
+			gamesLoading: this.gamesLoading,
 			showLogos: this.config.showLogos,
 			canGoBack: true,
 			canGoForward: true,
@@ -200,7 +202,7 @@ Module.register("MMM-SportsScores", {
 				prev.addEventListener("click", () => {
 					this.dayOffset--;
 					this.updateDateLabel();
-					this.dimContent();
+					this.clearGamesForDaySwitch();
 					this.fetchScores();
 					this.fetchFavorites();
 					this.broadcastInteraction();
@@ -211,7 +213,7 @@ Module.register("MMM-SportsScores", {
 				next.addEventListener("click", () => {
 					this.dayOffset++;
 					this.updateDateLabel();
-					this.dimContent();
+					this.clearGamesForDaySwitch();
 					this.fetchScores();
 					this.fetchFavorites();
 					this.broadcastInteraction();
@@ -403,6 +405,18 @@ Module.register("MMM-SportsScores", {
 		});
 	},
 
+	// Switching days used to just dim the previous day's games while the new
+	// day's data was in flight - since games/favorites arrive from separate,
+	// independently-timed requests, that left a window where one had already
+	// updated and the other hadn't, showing a mismatched mix of two different
+	// days at once. Clearing both immediately avoids that entirely.
+	clearGamesForDaySwitch () {
+		this.games = [];
+		this.favoriteGames = [];
+		this.gamesLoading = true;
+		this.updateDom(0);
+	},
+
 	dimStandingsColumn () {
 		const wrapper = document.getElementById(this.identifier);
 		if (!wrapper) return;
@@ -517,7 +531,7 @@ Module.register("MMM-SportsScores", {
 				this.dayOffset = dayMoment.diff(moment(today).startOf("day"), "days");
 				this.closeCalendar();
 				this.updateDateLabel();
-				this.dimContent();
+				this.clearGamesForDaySwitch();
 				this.fetchScores();
 				this.fetchFavorites();
 				this.broadcastInteraction();
@@ -641,6 +655,7 @@ Module.register("MMM-SportsScores", {
 			const oldGames = this.games;
 			this.games = payload.games;
 			this.loaded = true;
+			this.gamesLoading = false;
 			this.error = null;
 			if (this._canPatch(oldGames, payload.games)) {
 				this._patchGames(oldGames, payload.games, "game");
@@ -650,6 +665,7 @@ Module.register("MMM-SportsScores", {
 		} else if (notification === "SCORES_ERROR" && payload.requestId === this.requestId) {
 			this.error = payload.message;
 			this.loaded = true;
+			this.gamesLoading = false;
 			this.updateDom(300);
 		} else if (notification === "FAVORITES_DATA" && payload.requestId === this.favoritesRequestId) {
 			const oldFavorites = this.favoriteGames;
