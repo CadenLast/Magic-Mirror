@@ -82,10 +82,22 @@ Module.register("MMM-SportsScores", {
 
 	getFavoriteNameSubstrings () {
 		const sport = this.config.sports[this.activeSportIndex];
-		if (!sport || !this.config.favoriteTeams) return [];
-		return this.config.favoriteTeams
+		if (!sport) return [];
+
+		const favoriteNames = (this.config.favoriteTeams || [])
 			.filter((f) => f.sport === sport.sport && f.league === sport.league)
 			.map((f) => f.team.toLowerCase());
+
+		// collegeTeams entries don't have a league field (they're pulled from
+		// each team's own site, not a league-wide source), so this only
+		// matches on sport - fine in practice, since it's only relevant for
+		// the two college leagues to begin with.
+		const isCollegeLeague = sport.league === "college-football" || sport.league === "mens-college-basketball";
+		const collegeNames = isCollegeLeague
+			? (this.config.collegeTeams || []).filter((t) => t.sport === sport.sport).map((t) => t.team.toLowerCase())
+			: [];
+
+		return [...favoriteNames, ...collegeNames];
 	},
 
 	annotateStandingsFavorites (groups) {
@@ -106,8 +118,13 @@ Module.register("MMM-SportsScores", {
 		const games = this.games.map((game) => {
 			const g = {
 				...game,
-				homeTeam: { ...game.homeTeam },
-				awayTeam: { ...game.awayTeam }
+				// The NCAAF/NCAAB tabs only ever show tracked teams' own games
+				// (see node_helper's college-teams-aggregate provider), which
+				// already carry these fields from the same parsers used for
+				// favorites - other sports' games just get isFavorite:
+				// undefined here, same as before.
+				homeTeam: { ...game.homeTeam, isFavorite: game.favoriteIsHome },
+				awayTeam: { ...game.awayTeam, isFavorite: game.favoriteIsAway }
 			};
 
 			if (g.state === "post" || g.state === "in") {
