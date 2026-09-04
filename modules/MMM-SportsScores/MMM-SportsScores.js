@@ -264,6 +264,9 @@ Module.register("MMM-SportsScores", {
 			if (standingsViewToggle) {
 				standingsViewToggle.addEventListener("click", (e) => {
 					e.stopPropagation();
+					// Rankings (AP Top 25) have no league/division split - the
+					// label there is just the poll name, not a toggle.
+					if (this.isRankingsView) return;
 					this.standingsView = this.standingsView === "league" ? "division" : "league";
 					this.updateStandingsViewLabel();
 					this.dimStandingsColumn();
@@ -366,8 +369,9 @@ Module.register("MMM-SportsScores", {
 				</div>`;
 			}).join("");
 
+			const header = this.isRankingsView ? "" : `<div class="standings-group-header">${this._escapeHtml(group.name)}</div>`;
 			return `<div class="standings-group">
-				<div class="standings-group-header">${this._escapeHtml(group.name)}</div>
+				${header}
 				${teamsHtml}
 			</div>`;
 		}).join("");
