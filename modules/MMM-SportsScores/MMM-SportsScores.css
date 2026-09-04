@@ -230,7 +230,10 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 5px 6px;
+  /* Extra right padding - record/stat are now pinned flush to this edge
+     (see .standings-record's margin-left: auto), so they need a bit more
+     breathing room here than the left side gets. */
+  padding: 5px 10px 5px 6px;
   border-radius: 5px;
   background: rgba(0, 0, 0, 0.2);
   font-size: 0.78em;
