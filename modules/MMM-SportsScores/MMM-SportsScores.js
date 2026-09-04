@@ -115,14 +115,9 @@ Module.register("MMM-SportsScores", {
 	getTemplateData () {
 		const targetDate = moment().add(this.dayOffset, "days");
 
-		const games = this.games.map((game) => {
+		const favorites = this.favoriteGames.map((game) => {
 			const g = {
 				...game,
-				// The NCAAF/NCAAB tabs only ever show tracked teams' own games
-				// (see node_helper's college-teams-aggregate provider), which
-				// already carry these fields from the same parsers used for
-				// favorites - other sports' games just get isFavorite:
-				// undefined here, same as before.
 				homeTeam: { ...game.homeTeam, isFavorite: game.favoriteIsHome },
 				awayTeam: { ...game.awayTeam, isFavorite: game.favoriteIsAway }
 			};
@@ -144,9 +139,17 @@ Module.register("MMM-SportsScores", {
 			return g;
 		});
 
-		const favorites = this.favoriteGames.map((game) => {
+		// Anything already surfaced up in the favorites section would just be
+		// a duplicate of itself down here in the full games list.
+		const favoriteIds = new Set(favorites.map((g) => g.id));
+		const games = this.games.filter((game) => !favoriteIds.has(game.id)).map((game) => {
 			const g = {
 				...game,
+				// The NCAAF/NCAAB tabs only ever show tracked teams' own games
+				// (see node_helper's college-teams-aggregate provider), which
+				// already carry these fields from the same parsers used for
+				// favorites - other sports' games just get isFavorite:
+				// undefined here, same as before.
 				homeTeam: { ...game.homeTeam, isFavorite: game.favoriteIsHome },
 				awayTeam: { ...game.awayTeam, isFavorite: game.favoriteIsAway }
 			};
