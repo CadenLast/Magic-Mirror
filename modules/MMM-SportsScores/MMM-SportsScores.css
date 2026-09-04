@@ -229,12 +229,24 @@
 .standings-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
   padding: 5px 6px;
   border-radius: 5px;
   background: rgba(0, 0, 0, 0.2);
   font-size: 0.78em;
   color: var(--color-text);
+}
+
+/* Groups rank + logo + abbreviation as one block so space-between (which
+   evenly spaces every direct child of standings-row) spaces this whole
+   block against the record/stat/gb columns, instead of prying the rank,
+   logo and team name apart from each other too. */
+.standings-team {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .standings-row .scores-logo {
@@ -254,14 +266,29 @@
 }
 
 .standings-row .scores-abbr {
+  /* NFL/NBA/MLB/NHL abbreviations are always 3 letters or fewer, so 4ch is
+     plenty and leaves less dead space than sizing every sport for the
+     widest case. */
   flex: 0 0 4ch;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 
+.standings-row .scores-abbr.standings-abbr-wide {
+  /* AP Top 25 rankings can have real 4-letter college abbreviations (e.g.
+     "TA&M", "MICH") - 5ch, not 4ch, since "ch" is based on the "0"
+     character's width and those are made of wider letters that overflow a
+     box sized for exactly 4 average-width characters. */
+  flex-basis: 5ch;
+}
+
 .standings-record {
-  flex: 0 0 7ch;
+  /* 6ch fits every non-hockey record ("100-62", "10-6-1"). Right-aligning a
+     column this wide already leaves a little breathing room before shorter
+     values like "70-71" - going wider than the longest real value just
+     pushes the record further from the team name for no reason. */
+  flex: 0 0 6ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -269,14 +296,25 @@
   text-overflow: ellipsis;
 }
 
+.standings-record.standings-record-wide {
+  /* NHL's win-loss-OT record ("41-30-11") needs up to 8 characters. */
+  flex-basis: 9ch;
+}
+
 .standings-stat {
-  flex: 0 0 7ch;
+  /* 5ch fits every non-hockey stat (a win percentage like ".593" or
+     "1.000"). NHL's "123 PTS" needs standings-stat-wide instead. */
+  flex: 0 0 5ch;
   text-align: right;
   opacity: 0.75;
   font-size: 0.9em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.standings-stat.standings-stat-wide {
+  flex-basis: 7ch;
 }
 
 .standings-gb {
@@ -505,9 +543,12 @@
 
 /* Cap the team name to the widest abbreviation (4 letters, e.g. "UTAH") so
    the score sits at a fixed spot on the left instead of stretching to the
-   row's far edge, keeping scores lined up across every sport. */
+   row's far edge, keeping scores lined up across every sport. 5ch, not 4ch,
+   since "ch" is based on the "0" character's width and some real 4-letter
+   abbreviations (e.g. "TA&M", "MICH") are made of wider letters that
+   overflow a box sized for exactly 4 average-width characters. */
 .scores-team-row .scores-abbr {
-  flex: 0 0 4ch;
+  flex: 0 0 5ch;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;

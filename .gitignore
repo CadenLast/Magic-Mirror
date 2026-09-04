@@ -80,3 +80,7 @@ tests/**/.tmp/
 
 # Local API keys/secrets referenced by config/config.js - never commit these
 config/keys.js
+
+# Downloaded team logos, cached locally instead of re-fetching from remote
+# CDNs on every render - these are binary assets, not source
+modules/MMM-SportsScores/cache/

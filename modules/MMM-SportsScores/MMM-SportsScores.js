@@ -27,7 +27,17 @@ Module.register("MMM-SportsScores", {
 		// Optional: balldontlie.io API keys, one per sport/league (its free tier
 		// scopes a key to a single sport). Used for game/score data on sports
 		// listed here instead of ESPN; e.g. { nfl: "...", nba: "..." }.
-		balldontlieKeys: {}
+		balldontlieKeys: {},
+		// Optional: specific college teams to show as favorites, pulled directly
+		// from their own athletics department site rather than a league-wide
+		// source (there isn't a reliable free one for NCAAF/NCAAB game data).
+		// e.g. [{ sport: "football", team: "Iowa" }] - see COLLEGE_TEAM_SOURCES
+		// in node_helper.js for which teams are actually supported.
+		collegeTeams: [],
+		// Optional: a CollegeFootballData.com API key (also works directly on
+		// its sister site CollegeBasketballData.com - same account). Used for
+		// NCAAF/NCAAB "standings", which is actually the AP Top 25 poll.
+		cfbdKey: ""
 	},
 
 	getScripts () {
@@ -44,6 +54,7 @@ Module.register("MMM-SportsScores", {
 		this.activeSportIndex = 0;
 		this.games = [];
 		this.loaded = false;
+		this.gamesLoading = false;
 		this.error = null;
 		this.requestId = null;
 		this.favoriteGames = [];
@@ -72,10 +83,31 @@ Module.register("MMM-SportsScores", {
 
 	getFavoriteNameSubstrings () {
 		const sport = this.config.sports[this.activeSportIndex];
-		if (!sport || !this.config.favoriteTeams) return [];
-		return this.config.favoriteTeams
+		if (!sport) return [];
+
+		const favoriteNames = (this.config.favoriteTeams || [])
 			.filter((f) => f.sport === sport.sport && f.league === sport.league)
 			.map((f) => f.team.toLowerCase());
+
+		// collegeTeams entries don't have a league field (they're pulled from
+		// each team's own site, not a league-wide source), so this only
+		// matches on sport - fine in practice, since it's only relevant for
+		// the two college leagues to begin with.
+		const isCollegeLeague = sport.league === "college-football" || sport.league === "mens-college-basketball";
+		const collegeNames = isCollegeLeague
+			? (this.config.collegeTeams || []).filter((t) => t.sport === sport.sport).map((t) => t.team.toLowerCase())
+			: [];
+
+		return [...favoriteNames, ...collegeNames];
+	},
+
+	// Some leagues (NFL, NHL) have no real games-behind concept, so
+	// node_helper sends gamesBehind: null for those rather than "-" - showing
+	// a whole column of dashes for every team was just wasted width that
+	// pushed the row into getting clipped. Only render the column at all if
+	// at least one team actually has a real value.
+	standingsHasGamesBehind (groups) {
+		return groups.some((group) => group.teams.some((team) => team.gamesBehind !== null && team.gamesBehind !== undefined));
 	},
 
 	annotateStandingsFavorites (groups) {
@@ -93,11 +125,11 @@ Module.register("MMM-SportsScores", {
 	getTemplateData () {
 		const targetDate = moment().add(this.dayOffset, "days");
 
-		const games = this.games.map((game) => {
+		const favorites = this.favoriteGames.map((game) => {
 			const g = {
 				...game,
-				homeTeam: { ...game.homeTeam },
-				awayTeam: { ...game.awayTeam }
+				homeTeam: { ...game.homeTeam, isFavorite: game.favoriteIsHome },
+				awayTeam: { ...game.awayTeam, isFavorite: game.favoriteIsAway }
 			};
 
 			if (g.state === "post" || g.state === "in") {
@@ -117,9 +149,17 @@ Module.register("MMM-SportsScores", {
 			return g;
 		});
 
-		const favorites = this.favoriteGames.map((game) => {
+		// Anything already surfaced up in the favorites section would just be
+		// a duplicate of itself down here in the full games list.
+		const favoriteIds = new Set(favorites.map((g) => g.id));
+		const games = this.games.filter((game) => !favoriteIds.has(game.id)).map((game) => {
 			const g = {
 				...game,
+				// The NCAAF/NCAAB tabs only ever show tracked teams' own games
+				// (see node_helper's college-teams-aggregate provider), which
+				// already carry these fields from the same parsers used for
+				// favorites - other sports' games just get isFavorite:
+				// undefined here, same as before.
 				homeTeam: { ...game.homeTeam, isFavorite: game.favoriteIsHome },
 				awayTeam: { ...game.awayTeam, isFavorite: game.favoriteIsAway }
 			};
@@ -150,13 +190,16 @@ Module.register("MMM-SportsScores", {
 			activeSportIndex: this.activeSportIndex,
 			favorites: favorites,
 			games: games,
+			gamesLoading: this.gamesLoading,
 			showLogos: this.config.showLogos,
 			canGoBack: true,
 			canGoForward: true,
 			standingsLoaded: this.standingsLoaded,
 			standingsError: this.standingsError,
 			standingsGroups: this.annotateStandingsFavorites(this.standingsGroups),
+			hasGamesBehind: this.standingsHasGamesBehind(this.standingsGroups),
 			isRankings: this.isRankingsView,
+			isHockey: this.config.sports[this.activeSportIndex].league === "nhl",
 			standingsView: this.standingsView
 		};
 	},
@@ -170,7 +213,7 @@ Module.register("MMM-SportsScores", {
 				prev.addEventListener("click", () => {
 					this.dayOffset--;
 					this.updateDateLabel();
-					this.dimContent();
+					this.clearGamesForDaySwitch();
 					this.fetchScores();
 					this.fetchFavorites();
 					this.broadcastInteraction();
@@ -181,7 +224,7 @@ Module.register("MMM-SportsScores", {
 				next.addEventListener("click", () => {
 					this.dayOffset++;
 					this.updateDateLabel();
-					this.dimContent();
+					this.clearGamesForDaySwitch();
 					this.fetchScores();
 					this.fetchFavorites();
 					this.broadcastInteraction();
@@ -234,6 +277,9 @@ Module.register("MMM-SportsScores", {
 			if (standingsViewToggle) {
 				standingsViewToggle.addEventListener("click", (e) => {
 					e.stopPropagation();
+					// Rankings (AP Top 25) have no league/division split - the
+					// label there is just the poll name, not a toggle.
+					if (this.isRankingsView) return;
 					this.standingsView = this.standingsView === "league" ? "division" : "league";
 					this.updateStandingsViewLabel();
 					this.dimStandingsColumn();
@@ -316,28 +362,36 @@ Module.register("MMM-SportsScores", {
 			return `<div class="dimmed small scores-empty">No standings available</div>`;
 		}
 
+		const hasGamesBehind = this.standingsHasGamesBehind(this.standingsGroups);
+		const isHockey = this.config.sports[this.activeSportIndex].league === "nhl";
 		const groupsHtml = this.annotateStandingsFavorites(this.standingsGroups).map((group) => {
 			const teamsHtml = group.teams.map((team) => {
 				const logo = (this.config.showLogos && team.logo)
 					? `<img class="scores-logo" src="${this._escapeHtml(team.logo)}" alt="" />`
 					: "";
 				const rankOrSeed = this._escapeHtml(this.isRankingsView ? team.rank : team.seed);
+				const gb = hasGamesBehind ? `<span class="standings-gb">${this._escapeHtml(team.gamesBehind)}</span>` : "";
+				const statClass = ["standings-stat", isHockey ? "standings-stat-wide" : ""].filter(Boolean).join(" ");
 				const extra = this.isRankingsView
 					? ""
-					: `<span class="standings-stat">${this._escapeHtml(team.stat)}</span>
-					   <span class="standings-gb">${this._escapeHtml(team.gamesBehind)}</span>`;
-				const abbrClass = team.isFavorite ? "scores-abbr scores-favorite" : "scores-abbr";
+					: `<span class="${statClass}">${this._escapeHtml(team.stat)}</span>
+					   ${gb}`;
+				const abbrClass = ["scores-abbr", this.isRankingsView ? "standings-abbr-wide" : "", team.isFavorite ? "scores-favorite" : ""].filter(Boolean).join(" ");
+				const recordClass = ["standings-record", isHockey ? "standings-record-wide" : ""].filter(Boolean).join(" ");
 				return `<div class="standings-row">
-					<span class="standings-rank">${rankOrSeed}</span>
-					${logo}
-					<span class="${abbrClass}">${this._escapeHtml(team.abbreviation)}</span>
-					<span class="standings-record">${this._escapeHtml(team.record)}</span>
+					<span class="standings-team">
+						<span class="standings-rank">${rankOrSeed}</span>
+						${logo}
+						<span class="${abbrClass}">${this._escapeHtml(team.abbreviation)}</span>
+					</span>
+					<span class="${recordClass}">${this._escapeHtml(team.record)}</span>
 					${extra}
 				</div>`;
 			}).join("");
 
+			const header = this.isRankingsView ? "" : `<div class="standings-group-header">${this._escapeHtml(group.name)}</div>`;
 			return `<div class="standings-group">
-				<div class="standings-group-header">${this._escapeHtml(group.name)}</div>
+				${header}
 				${teamsHtml}
 			</div>`;
 		}).join("");
@@ -367,6 +421,18 @@ Module.register("MMM-SportsScores", {
 		wrapper.querySelectorAll(".scores-games-container, .standings-container, .scores-empty").forEach((el) => {
 			el.style.opacity = "0.3";
 		});
+	},
+
+	// Switching days used to just dim the previous day's games while the new
+	// day's data was in flight - since games/favorites arrive from separate,
+	// independently-timed requests, that left a window where one had already
+	// updated and the other hadn't, showing a mismatched mix of two different
+	// days at once. Clearing both immediately avoids that entirely.
+	clearGamesForDaySwitch () {
+		this.games = [];
+		this.favoriteGames = [];
+		this.gamesLoading = true;
+		this.updateDom(0);
 	},
 
 	dimStandingsColumn () {
@@ -483,7 +549,7 @@ Module.register("MMM-SportsScores", {
 				this.dayOffset = dayMoment.diff(moment(today).startOf("day"), "days");
 				this.closeCalendar();
 				this.updateDateLabel();
-				this.dimContent();
+				this.clearGamesForDaySwitch();
 				this.fetchScores();
 				this.fetchFavorites();
 				this.broadcastInteraction();
@@ -565,19 +631,25 @@ Module.register("MMM-SportsScores", {
 			top25: sport.top25 || false,
 			espnProxy: this.config.espnProxy,
 			balldontlieKeys: this.config.balldontlieKeys,
+			collegeTeams: this.config.collegeTeams,
+			cfbdKey: this.config.cfbdKey,
 			requestId: this.requestId
 		});
 	},
 
 	fetchFavorites () {
-		if (!this.config.favoriteTeams || this.config.favoriteTeams.length === 0) return;
+		const hasFavorites = this.config.favoriteTeams && this.config.favoriteTeams.length > 0;
+		const hasCollegeTeams = this.config.collegeTeams && this.config.collegeTeams.length > 0;
+		if (!hasFavorites && !hasCollegeTeams) return;
 		const targetDate = moment().add(this.dayOffset, "days").format("YYYYMMDD");
 		this.favoritesRequestId = `fav-${this.dayOffset}-${Date.now()}`;
 		this.sendSocketNotification("FETCH_FAVORITES", {
 			date: targetDate,
-			favorites: this.config.favoriteTeams,
+			favorites: this.config.favoriteTeams || [],
+			collegeTeams: this.config.collegeTeams || [],
 			espnProxy: this.config.espnProxy,
 			balldontlieKeys: this.config.balldontlieKeys,
+			cfbdKey: this.config.cfbdKey,
 			requestId: this.favoritesRequestId
 		});
 	},
@@ -591,7 +663,7 @@ Module.register("MMM-SportsScores", {
 			top25: sport.top25 || false,
 			view: this.standingsView,
 			espnProxy: this.config.espnProxy,
-			balldontlieKeys: this.config.balldontlieKeys,
+			cfbdKey: this.config.cfbdKey,
 			requestId: this.standingsRequestId
 		});
 	},
@@ -601,6 +673,7 @@ Module.register("MMM-SportsScores", {
 			const oldGames = this.games;
 			this.games = payload.games;
 			this.loaded = true;
+			this.gamesLoading = false;
 			this.error = null;
 			if (this._canPatch(oldGames, payload.games)) {
 				this._patchGames(oldGames, payload.games, "game");
@@ -610,6 +683,7 @@ Module.register("MMM-SportsScores", {
 		} else if (notification === "SCORES_ERROR" && payload.requestId === this.requestId) {
 			this.error = payload.message;
 			this.loaded = true;
+			this.gamesLoading = false;
 			this.updateDom(300);
 		} else if (notification === "FAVORITES_DATA" && payload.requestId === this.favoritesRequestId) {
 			const oldFavorites = this.favoriteGames;
