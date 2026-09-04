@@ -271,7 +271,11 @@
      spread across the full row width instead of leaving it dangling
      mid-row with blank space past it. */
   margin-left: auto;
-  flex: 0 0 7ch;
+  /* 9ch, not 7ch - NHL's win-loss-OT record ("41-30-11") needs up to 8
+     characters, and digits are all the same width under tabular-nums so
+     this doesn't need the same "wide letters" buffer as the abbreviation
+     column, just room for the actual longest real value. */
+  flex: 0 0 9ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
