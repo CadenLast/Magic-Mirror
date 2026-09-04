@@ -130,6 +130,14 @@ const ESPN_LOGO_SLUG_OVERRIDES = {
 	nba: { NOP: "no", UTA: "utah" }
 };
 
+// Iowa's primary logo is black, which disappears against this module's dark
+// background. Both CFBD and ESPN's logo CDNs also publish a "dark" variant
+// (gold Tigerhawk) meant for exactly this situation - use those instead.
+const COLLEGE_TEAM_LOGO_OVERRIDES = {
+	"college-football": { Iowa: "https://cdn.collegefootballdata.com/logos-dark/500/2294.png" },
+	"mens-college-basketball": { Iowa: "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2294.png" }
+};
+
 const toIsoDate = (yyyymmdd) => `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 
 module.exports = NodeHelper.create({
@@ -888,10 +896,11 @@ module.exports = NodeHelper.create({
 		// Duke's sourceId and ESPN's team id both come out to 150), so ESPN's
 		// static logo CDN (an image host, not an API - no reliability concerns
 		// like the ones that ruled ESPN out for data) works from that.
+		const logoOverrides = COLLEGE_TEAM_LOGO_OVERRIDES[league] || {};
 		const lookup = new Map(teams.map((t) => {
-			const logo = league === "college-football"
+			const logo = logoOverrides[t.school] || (league === "college-football"
 				? (t.logos && t.logos[0]) || ""
-				: (t.sourceId ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${t.sourceId}.png` : "");
+				: (t.sourceId ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${t.sourceId}.png` : ""));
 			return [t.school, { abbreviation: t.abbreviation || t.school, logo }];
 		}));
 
