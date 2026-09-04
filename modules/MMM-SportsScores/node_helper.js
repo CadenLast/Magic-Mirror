@@ -70,6 +70,13 @@ const BALLDONTLIE_LEAGUE_PATHS = {
 // only publish weekly, so this is cached well past a single refresh cycle.
 const AP_POLL_LEAGUES = new Set(["college-football", "mens-college-basketball"]);
 const AP_POLL_TTL_MS = 60 * 60 * 1000;
+
+// Games/standings already refresh on their own minute-based cycle, so
+// re-fetching the exact same query more often than that (e.g. rapid
+// back-and-forth day-clicking, or a sport-switch bouncing back to a tab
+// checked seconds ago) just burns rate-limit budget for no fresher data -
+// short enough to not meaningfully delay a genuinely live score update.
+const GAMES_FRESHNESS_TTL_MS = 45 * 1000;
 const CFBD_TEAMS_TTL_MS = 24 * 60 * 60 * 1000;
 
 // balldontlie's published free-tier limit is 5 requests/min per key. This is a
@@ -213,14 +220,19 @@ module.exports = NodeHelper.create({
 	async fetchGamesForProvider (sport, league, date, top25, proxy, balldontlieKeys) {
 		const cacheKey = `${sport}/${league}/${date}/${top25}`;
 		this.gamesCache = this.gamesCache || {};
+		const cached = this.gamesCache[cacheKey];
+		if (cached && Date.now() - cached.fetchedAt < GAMES_FRESHNESS_TTL_MS) {
+			return cached.games;
+		}
+
 		try {
 			const games = await this.fetchGamesForProviderUncached(sport, league, date, top25, proxy, balldontlieKeys);
-			this.gamesCache[cacheKey] = games;
+			this.gamesCache[cacheKey] = { games, fetchedAt: Date.now() };
 			return games;
 		} catch (error) {
-			if (this.gamesCache[cacheKey]) {
+			if (cached) {
 				Log.warn(`${this.name}: Using cached games for ${sport}/${league} after fetch failure: ${error.message}`);
-				return this.gamesCache[cacheKey];
+				return cached.games;
 			}
 			throw error;
 		}
