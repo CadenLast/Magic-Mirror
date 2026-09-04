@@ -27,7 +27,13 @@ Module.register("MMM-SportsScores", {
 		// Optional: balldontlie.io API keys, one per sport/league (its free tier
 		// scopes a key to a single sport). Used for game/score data on sports
 		// listed here instead of ESPN; e.g. { nfl: "...", nba: "..." }.
-		balldontlieKeys: {}
+		balldontlieKeys: {},
+		// Optional: specific college teams to show as favorites, pulled directly
+		// from their own athletics department site rather than a league-wide
+		// source (there isn't a reliable free one for NCAAF/NCAAB game data).
+		// e.g. [{ sport: "football", team: "Iowa" }] - see COLLEGE_TEAM_SOURCES
+		// in node_helper.js for which teams are actually supported.
+		collegeTeams: []
 	},
 
 	getScripts () {
@@ -570,12 +576,15 @@ Module.register("MMM-SportsScores", {
 	},
 
 	fetchFavorites () {
-		if (!this.config.favoriteTeams || this.config.favoriteTeams.length === 0) return;
+		const hasFavorites = this.config.favoriteTeams && this.config.favoriteTeams.length > 0;
+		const hasCollegeTeams = this.config.collegeTeams && this.config.collegeTeams.length > 0;
+		if (!hasFavorites && !hasCollegeTeams) return;
 		const targetDate = moment().add(this.dayOffset, "days").format("YYYYMMDD");
 		this.favoritesRequestId = `fav-${this.dayOffset}-${Date.now()}`;
 		this.sendSocketNotification("FETCH_FAVORITES", {
 			date: targetDate,
-			favorites: this.config.favoriteTeams,
+			favorites: this.config.favoriteTeams || [],
+			collegeTeams: this.config.collegeTeams || [],
 			espnProxy: this.config.espnProxy,
 			balldontlieKeys: this.config.balldontlieKeys,
 			requestId: this.favoritesRequestId

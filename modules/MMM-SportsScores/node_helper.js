@@ -81,6 +81,32 @@ const BALLDONTLIE_STANDINGS_TTL_MS = 30 * 60 * 1000;
 // share a key. Capped below the real limit as safety margin.
 const BALLDONTLIE_MAX_REQUESTS_PER_MINUTE = 4;
 
+// Specific college teams with no reliable league-wide data source (NCAAF/NCAAB
+// games generally aren't available for free - see the balldontlie standings
+// section below) but whose own athletics department site has real, extractable
+// schedule data. Two different site platforms, two different extraction
+// methods - see fetchHawkeyesTeamSchedule/fetchNuxtTeamSchedule.
+const COLLEGE_TEAM_SOURCES = {
+	"football/Iowa": { type: "hawkeyes", scheduleId: 1196 },
+	"football/Iowa State": { type: "nuxt", host: "https://cyclones.com", sportSlug: "football" },
+	"basketball/Iowa": { type: "hawkeyes", scheduleId: 1338 },
+	"basketball/Iowa State": { type: "nuxt", host: "https://cyclones.com", sportSlug: "mens-basketball" },
+	"basketball/Northern Iowa": { type: "nuxt", host: "https://unipanthers.com", sportSlug: "mens-basketball" },
+	"basketball/Creighton": { type: "nuxt", host: "https://gocreighton.com", sportSlug: "mens-basketball" }
+};
+
+// A team's full schedule barely changes once released (just game results
+// filling in over the season), so this is cached for hours rather than
+// re-fetched every refresh cycle - these are small athletics department
+// sites, not a resourced API, and deserve a light touch.
+const COLLEGE_TEAM_SCHEDULE_TTL_MS = 3 * 60 * 60 * 1000;
+
+// Tags used by Nuxt's SSR payload serialization format (the reference-array
+// scheme in the page's __NUXT_DATA__ script) that just wrap a plain value
+// reference - resolving through them is enough for our purposes, since we
+// don't need actual Vue reactivity, just the underlying data.
+const NUXT_TRANSPARENT_TAGS = new Set(["Reactive", "ShallowReactive", "Ref", "ShallowRef", "EmptyRef", "EmptyShallowRef"]);
+
 // balldontlie doesn't include team logos, but ESPN's static logo CDN is just
 // image assets (not an API endpoint), so it isn't affected by the reliability
 // problems that ruled ESPN out for game/score data. It uses lowercase team
@@ -202,7 +228,7 @@ module.exports = NodeHelper.create({
 	},
 
 	async fetchFavorites (payload) {
-		const { date, favorites, espnProxy, balldontlieKeys, requestId } = payload;
+		const { date, favorites, collegeTeams, espnProxy, balldontlieKeys, requestId } = payload;
 
 		const leagueMap = {};
 		for (const fav of favorites) {
@@ -238,8 +264,36 @@ module.exports = NodeHelper.create({
 			}
 		});
 
-		await Promise.all(fetches);
-		this.sendSocketNotification("FAVORITES_DATA", { games: allGames, requestId });
+		const collegeFetches = (collegeTeams || []).map(async ({ sport, team }, index) => {
+			await sleep((Object.keys(leagueMap).length + index) * 400);
+			try {
+				const game = await this.fetchCollegeTeamGameForDate(sport, team, date);
+				if (game) {
+					allGames.push(game);
+				}
+			} catch (error) {
+				Log.error(`${this.name}: Error fetching college team favorite for ${sport}/${team}:`, error.message);
+			}
+		});
+
+		await Promise.all([...fetches, ...collegeFetches]);
+
+		// When two favorited college teams play each other, their schedules
+		// each report the same real-world game independently, so it'd
+		// otherwise show up twice - collapse anything with the same two
+		// teams/sport/date down to one entry.
+		const seen = new Set();
+		const dedupedGames = allGames.filter((game) => {
+			const teams = [game.homeTeam.name, game.awayTeam.name].sort().join("|");
+			const key = `${game.sport}|${teams}|${(game.eventDate || "").slice(0, 10)}`;
+			if (seen.has(key)) {
+				return false;
+			}
+			seen.add(key);
+			return true;
+		});
+
+		this.sendSocketNotification("FAVORITES_DATA", { games: dedupedGames, requestId });
 	},
 
 	async fetchStandings (payload) {
@@ -794,6 +848,193 @@ module.exports = NodeHelper.create({
 			record: `${entry.wins ?? 0}-${entry.losses ?? 0}`,
 			stat: entry.win_percentage != null ? entry.win_percentage.toFixed(3).replace(/^0\./, ".") : "",
 			gamesBehind: entry.games_behind != null ? String(entry.games_behind) : "-"
+		};
+	},
+
+	// ---------------------------------------------------------------------
+	// Specific college teams (Iowa, Iowa State, Northern Iowa, Creighton) -
+	// pulled directly from their own athletics department sites, since
+	// there's no reliable free league-wide source for NCAAF/NCAAB game data.
+	// Two different site platforms need two different extraction approaches;
+	// see COLLEGE_TEAM_SOURCES above for which team uses which.
+	// ---------------------------------------------------------------------
+
+	async fetchCollegeTeamGameForDate (sport, team, date) {
+		const games = await this.fetchCollegeTeamSchedule(sport, team);
+		const target = toIsoDate(date);
+		return games.find((g) => (g.eventDate || "").slice(0, 10) === target) || null;
+	},
+
+	async fetchCollegeTeamSchedule (sport, team) {
+		const key = `${sport}/${team}`;
+		const source = COLLEGE_TEAM_SOURCES[key];
+		if (!source) {
+			return [];
+		}
+
+		this.collegeTeamCache = this.collegeTeamCache || {};
+		const cached = this.collegeTeamCache[key];
+		if (cached && Date.now() - cached.fetchedAt < COLLEGE_TEAM_SCHEDULE_TTL_MS) {
+			return cached.games;
+		}
+
+		const games = source.type === "hawkeyes"
+			? await this.fetchHawkeyesTeamSchedule(sport, team, source.scheduleId)
+			: await this.fetchNuxtTeamSchedule(sport, team, source.host, source.sportSlug);
+
+		this.collegeTeamCache[key] = { games, fetchedAt: Date.now() };
+		return games;
+	},
+
+	async fetchHawkeyesTeamSchedule (sport, team, scheduleId) {
+		const url = `https://hawkeyesports.com/website-api/schedule-events?filter[schedule_id]=${scheduleId}&sort=datetime&per_page=50&page=1`;
+		const response = await fetch(url, { headers: ESPN_HEADERS });
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}`);
+		}
+		const data = await response.json();
+		return (data.data || []).map((event) => this.parseHawkeyesEvent(sport, team, event));
+	},
+
+	parseHawkeyesEvent (sport, team, event) {
+		// This site hasn't shown a completed or live game yet to confirm the
+		// exact status values for those (or any score fields) - confirmed by
+		// testing that TBD/unconfirmed future games report status as null
+		// rather than "as_scheduled", so anything not explicitly recognized as
+		// final defaults to "pre" rather than "in" (a live game briefly
+		// showing as not-yet-started is a smaller, less confusing error than
+		// a game weeks out showing as live).
+		const state = (event.status || "").toLowerCase().includes("final") ? "post" : "pre";
+		const isHome = event.venue_type === "home";
+		const opponentName = event.opponent_school_name || event.opponent_name || "TBD";
+
+		const teamSide = { name: team, abbreviation: team, logo: "", score: "0", rank: null };
+		const opponentSide = { name: opponentName, abbreviation: opponentName, logo: "", score: "0", rank: null };
+
+		return {
+			id: String(event.id || ""),
+			sport: sport || "",
+			league: "",
+			url: event.box_score_url || "https://hawkeyesports.com/",
+			homeRank: 99,
+			awayRank: 99,
+			homeTeam: isHome ? teamSide : opponentSide,
+			awayTeam: isHome ? opponentSide : teamSide,
+			state,
+			detail: event.status_text || (state === "pre" ? "Scheduled" : ""),
+			eventDate: event.datetime || "",
+			situation: null,
+			favoriteIsHome: isHome,
+			favoriteIsAway: !isHome
+		};
+	},
+
+	async fetchNuxtTeamSchedule (sport, team, host, sportSlug) {
+		const url = `${host}/sports/${sportSlug}/schedule`;
+		const response = await fetch(url, { headers: ESPN_HEADERS });
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}`);
+		}
+		const html = await response.text();
+		const match = html.match(/<script[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+		if (!match) {
+			throw new Error("No __NUXT_DATA__ found on page");
+		}
+		const arr = JSON.parse(match[1]);
+
+		// Only unwrap (not deep-resolve) down to the "schedule" branch specifically,
+		// rather than resolving the whole payload - other branches (site-config,
+		// layout, etc.) have hit shapes this resolver doesn't handle, and we don't
+		// need them anyway.
+		const root = arr[this.unwrapNuxtRef(arr, 0)];
+		const pinia = arr[this.unwrapNuxtRef(arr, root.pinia)];
+		const scheduleIdx = this.unwrapNuxtRef(arr, pinia.schedule);
+		const schedule = this.resolveNuxtValue(arr, scheduleIdx);
+
+		const schedulesObj = (schedule && schedule.schedules) || {};
+		const scheduleKey = Object.keys(schedulesObj).find((k) => k.startsWith(`schedules-${sportSlug},`));
+		const games = scheduleKey ? (schedulesObj[scheduleKey].games || []) : [];
+		return games.map((game) => this.parseNuxtTeamGame(sport, team, host, game));
+	},
+
+	// Follows Nuxt's tagged reference wrappers (e.g. ["Reactive", 11] meaning
+	// "the real value is at index 11") to the index they actually point to,
+	// without resolving anything else - used to walk down to a specific
+	// branch before doing a full recursive resolve on just that subtree.
+	unwrapNuxtRef (arr, idx) {
+		let val = arr[idx];
+		while (Array.isArray(val) && val.length === 2 && typeof val[0] === "string" && NUXT_TRANSPARENT_TAGS.has(val[0])) {
+			idx = val[1];
+			val = arr[idx];
+		}
+		return idx;
+	},
+
+	// Fully resolves a subtree of Nuxt's SSR payload reference-array format
+	// into plain data - each array entry is either a primitive, a tagged
+	// reference, or a plain object/array whose values are themselves indices
+	// into the same array.
+	resolveNuxtValue (arr, idx, seen) {
+		seen = seen || new Set();
+		if (seen.has(idx)) {
+			return null;
+		}
+		seen.add(idx);
+		const val = arr[idx];
+		if (val === null || typeof val !== "object") {
+			return val;
+		}
+		if (Array.isArray(val)) {
+			if (val.length === 2 && typeof val[0] === "string" && NUXT_TRANSPARENT_TAGS.has(val[0])) {
+				return this.resolveNuxtValue(arr, val[1], seen);
+			}
+			if (val.length === 2 && val[0] === "Set") {
+				return arr[val[1]].map((i) => this.resolveNuxtValue(arr, i, seen));
+			}
+			if (val.length === 2 && val[0] === "Map") {
+				const result = {};
+				for (const [k, v] of arr[val[1]]) {
+					const resolvedKey = typeof k === "number" ? this.resolveNuxtValue(arr, k, seen) : k;
+					result[resolvedKey] = this.resolveNuxtValue(arr, v, seen);
+				}
+				return result;
+			}
+			return val.map((i) => this.resolveNuxtValue(arr, i, seen));
+		}
+		const result = {};
+		for (const [k, v] of Object.entries(val)) {
+			result[k] = this.resolveNuxtValue(arr, v, seen);
+		}
+		return result;
+	},
+
+	parseNuxtTeamGame (sport, team, host, game) {
+		// Confirmed by testing that TBD/unconfirmed future games report this
+		// as null rather than "SCHEDULED" - same reasoning as
+		// parseHawkeyesEvent above, defaults to "pre" rather than "in".
+		const stateDisplay = (game.game_state_display || "").toUpperCase();
+		const state = stateDisplay.includes("FINAL") ? "post" : "pre";
+		const isHome = game.location_indicator === "H";
+		const opponentName = game.opponent?.title || "TBD";
+
+		const teamSide = { name: team, abbreviation: team, logo: "", score: "0", rank: null };
+		const opponentSide = { name: opponentName, abbreviation: opponentName, logo: game.opponent?.image?.fullpath || "", score: "0", rank: null };
+
+		return {
+			id: String(game.id || ""),
+			sport: sport || "",
+			league: "",
+			url: game.game_center_link ? `${host}${game.game_center_link}` : host,
+			homeRank: 99,
+			awayRank: 99,
+			homeTeam: isHome ? teamSide : opponentSide,
+			awayTeam: isHome ? opponentSide : teamSide,
+			state,
+			detail: state === "pre" ? (game.time || "Scheduled") : "",
+			eventDate: game.date || "",
+			situation: null,
+			favoriteIsHome: isHome,
+			favoriteIsAway: !isHome
 		};
 	},
 
