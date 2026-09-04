@@ -101,6 +101,15 @@ Module.register("MMM-SportsScores", {
 		return [...favoriteNames, ...collegeNames];
 	},
 
+	// Some leagues (NFL, NHL) have no real games-behind concept, so
+	// node_helper sends gamesBehind: null for those rather than "-" - showing
+	// a whole column of dashes for every team was just wasted width that
+	// pushed the row into getting clipped. Only render the column at all if
+	// at least one team actually has a real value.
+	standingsHasGamesBehind (groups) {
+		return groups.some((group) => group.teams.some((team) => team.gamesBehind !== null && team.gamesBehind !== undefined));
+	},
+
 	annotateStandingsFavorites (groups) {
 		const favoriteNames = this.getFavoriteNameSubstrings();
 		if (favoriteNames.length === 0) return groups;
@@ -188,6 +197,7 @@ Module.register("MMM-SportsScores", {
 			standingsLoaded: this.standingsLoaded,
 			standingsError: this.standingsError,
 			standingsGroups: this.annotateStandingsFavorites(this.standingsGroups),
+			hasGamesBehind: this.standingsHasGamesBehind(this.standingsGroups),
 			isRankings: this.isRankingsView,
 			standingsView: this.standingsView
 		};
@@ -351,16 +361,18 @@ Module.register("MMM-SportsScores", {
 			return `<div class="dimmed small scores-empty">No standings available</div>`;
 		}
 
+		const hasGamesBehind = this.standingsHasGamesBehind(this.standingsGroups);
 		const groupsHtml = this.annotateStandingsFavorites(this.standingsGroups).map((group) => {
 			const teamsHtml = group.teams.map((team) => {
 				const logo = (this.config.showLogos && team.logo)
 					? `<img class="scores-logo" src="${this._escapeHtml(team.logo)}" alt="" />`
 					: "";
 				const rankOrSeed = this._escapeHtml(this.isRankingsView ? team.rank : team.seed);
+				const gb = hasGamesBehind ? `<span class="standings-gb">${this._escapeHtml(team.gamesBehind)}</span>` : "";
 				const extra = this.isRankingsView
 					? ""
 					: `<span class="standings-stat">${this._escapeHtml(team.stat)}</span>
-					   <span class="standings-gb">${this._escapeHtml(team.gamesBehind)}</span>`;
+					   ${gb}`;
 				const abbrClass = team.isFavorite ? "scores-abbr scores-favorite" : "scores-abbr";
 				return `<div class="standings-row">
 					<span class="standings-rank">${rankOrSeed}</span>

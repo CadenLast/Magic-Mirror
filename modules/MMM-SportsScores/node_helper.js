@@ -502,7 +502,12 @@ module.exports = NodeHelper.create({
 			logo: entry.team?.logos?.[0]?.href || "",
 			record,
 			stat,
-			gamesBehind: statsByName.gamesBehind || "-"
+			// null (not "-") when ESPN doesn't have this stat for the sport at
+			// all (e.g. NFL, which has no games-behind concept) - "-" is a
+			// legitimate displayed value for a division leader, so the two
+			// need to stay distinguishable for the frontend to know whether
+			// to show the column at all.
+			gamesBehind: statsByName.gamesBehind ?? null
 		};
 	},
 
@@ -1446,7 +1451,10 @@ module.exports = NodeHelper.create({
 			logo: team.teamLogo || "",
 			record: `${wins}-${losses}-${otLosses}`,
 			stat: `${team.points ?? 0} PTS`,
-			gamesBehind: "-"
+			// NHL standings are points-based, not games-behind - null (not
+			// "-") tells the frontend to hide the column instead of rendering
+			// a dash for every team.
+			gamesBehind: null
 		};
 	}
 });

@@ -162,7 +162,9 @@
                       <span class="standings-record">{{ team.record }}</span>
                       {% if not isRankings %}
                         <span class="standings-stat">{{ team.stat }}</span>
-                        <span class="standings-gb">{{ team.gamesBehind }}</span>
+                        {% if hasGamesBehind %}
+                          <span class="standings-gb">{{ team.gamesBehind }}</span>
+                        {% endif %}
                       {% endif %}
                     </div>
                   {% endfor %}
