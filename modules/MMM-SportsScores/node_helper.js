@@ -814,7 +814,18 @@ module.exports = NodeHelper.create({
 			? `https://api.collegefootballdata.com/teams?year=${new Date().getFullYear()}`
 			: "https://api.collegebasketballdata.com/teams";
 		const teams = await this.fetchCfbdJson(url, apiKey);
-		const lookup = new Map(teams.map((t) => [t.school, { abbreviation: t.abbreviation || t.school, logo: (t.logos && t.logos[0]) || "" }]));
+		// Football's response includes real logo URLs directly; basketball's
+		// doesn't, but its "sourceId" is ESPN's own numeric team ID (confirmed
+		// by cross-referencing against ESPN's own scoreboard data directly -
+		// Duke's sourceId and ESPN's team id both come out to 150), so ESPN's
+		// static logo CDN (an image host, not an API - no reliability concerns
+		// like the ones that ruled ESPN out for data) works from that.
+		const lookup = new Map(teams.map((t) => {
+			const logo = league === "college-football"
+				? (t.logos && t.logos[0]) || ""
+				: (t.sourceId ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${t.sourceId}.png` : "");
+			return [t.school, { abbreviation: t.abbreviation || t.school, logo }];
+		}));
 
 		this.cfbdTeamsCache[league] = { lookup, fetchedAt: Date.now() };
 		return lookup;
