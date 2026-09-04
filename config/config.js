@@ -156,17 +156,6 @@ let config = {
 					{ team: "Bulls", sport: "basketball", league: "nba" },
 					{ team: "Cubs", sport: "baseball", league: "mlb" }
 				],
-				// Pulled directly from these teams' own athletics department
-				// sites - see COLLEGE_TEAM_SOURCES in node_helper.js. Drake
-				// basketball is left out for now (no clean data source found).
-				collegeTeams: [
-					{ sport: "football", team: "Iowa" },
-					{ sport: "football", team: "Iowa State" },
-					{ sport: "basketball", team: "Iowa" },
-					{ sport: "basketball", team: "Iowa State" },
-					{ sport: "basketball", team: "Northern Iowa" },
-					{ sport: "basketball", team: "Creighton" }
-				],
 				balldontlieKeys: keys.balldontlie
 			}
 		},
