@@ -121,6 +121,15 @@ const COLLEGE_TEAM_SOURCES = {
 // sites, not a resourced API, and deserve a light touch.
 const COLLEGE_TEAM_SCHEDULE_TTL_MS = 3 * 60 * 60 * 1000;
 
+// These sources never report a live in-progress score - only "not yet
+// played" or "final" - so the 3-hour TTL above only ever risks delaying how
+// soon a FINAL result shows up (if the cache was populated before kickoff,
+// the game could be over for up to 3 hours before the schedule gets
+// refetched). Once today's game for a team is still unresolved, switch to a
+// much shorter TTL so the final score shows up within about a minute of the
+// source actually publishing it, matching this module's own refresh cadence.
+const COLLEGE_TEAM_LIVE_TTL_MS = 60 * 1000;
+
 // balldontlie doesn't include team logos, but ESPN's static logo CDN is just
 // image assets (not an API endpoint), so it isn't affected by the reliability
 // problems that ruled ESPN out for game/score data. It uses lowercase team
@@ -1016,6 +1025,11 @@ module.exports = NodeHelper.create({
 		}));
 	},
 
+	hasUnresolvedGameToday (games) {
+		const today = new Date().toISOString().slice(0, 10);
+		return games.some((g) => (g.eventDate || "").slice(0, 10) === today && g.state !== "post");
+	},
+
 	async fetchCollegeTeamGameForDate (sport, team, date, cfbdKey) {
 		const games = await this.fetchCollegeTeamSchedule(sport, team, cfbdKey);
 		const target = toIsoDate(date);
@@ -1031,8 +1045,11 @@ module.exports = NodeHelper.create({
 
 		this.collegeTeamCache = this.collegeTeamCache || {};
 		const cached = this.collegeTeamCache[key];
-		if (cached && Date.now() - cached.fetchedAt < COLLEGE_TEAM_SCHEDULE_TTL_MS) {
-			return cached.games;
+		if (cached) {
+			const ttl = this.hasUnresolvedGameToday(cached.games) ? COLLEGE_TEAM_LIVE_TTL_MS : COLLEGE_TEAM_SCHEDULE_TTL_MS;
+			if (Date.now() - cached.fetchedAt < ttl) {
+				return cached.games;
+			}
 		}
 
 		try {
