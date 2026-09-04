@@ -261,7 +261,7 @@ module.exports = NodeHelper.create({
 	},
 
 	async fetchFavorites (payload) {
-		const { date, favorites, collegeTeams, espnProxy, balldontlieKeys, requestId } = payload;
+		const { date, favorites, collegeTeams, espnProxy, balldontlieKeys, cfbdKey, requestId } = payload;
 
 		const leagueMap = {};
 		for (const fav of favorites) {
@@ -300,7 +300,7 @@ module.exports = NodeHelper.create({
 		const collegeFetches = (collegeTeams || []).map(async ({ sport, team }, index) => {
 			await sleep((Object.keys(leagueMap).length + index) * 400);
 			try {
-				const game = await this.fetchCollegeTeamGameForDate(sport, team, date);
+				const game = await this.fetchCollegeTeamGameForDate(sport, team, date, cfbdKey);
 				if (game) {
 					allGames.push(game);
 				}
@@ -935,13 +935,13 @@ module.exports = NodeHelper.create({
 	// see COLLEGE_TEAM_SOURCES above for which team uses which.
 	// ---------------------------------------------------------------------
 
-	async fetchCollegeTeamGameForDate (sport, team, date) {
-		const games = await this.fetchCollegeTeamSchedule(sport, team);
+	async fetchCollegeTeamGameForDate (sport, team, date, cfbdKey) {
+		const games = await this.fetchCollegeTeamSchedule(sport, team, cfbdKey);
 		const target = toIsoDate(date);
 		return games.find((g) => (g.eventDate || "").slice(0, 10) === target) || null;
 	},
 
-	async fetchCollegeTeamSchedule (sport, team) {
+	async fetchCollegeTeamSchedule (sport, team, cfbdKey) {
 		const key = `${sport}/${team}`;
 		const source = COLLEGE_TEAM_SOURCES[key];
 		if (!source) {
@@ -954,25 +954,41 @@ module.exports = NodeHelper.create({
 			return cached.games;
 		}
 
+		// The AP poll's CFBD/CBBD teams lookup (real abbreviations + logos) is
+		// reused here too, rather than falling back to full names - these
+		// sources give full school names, not short codes, and this data is
+		// already fetched and cached long-term for the AP poll anyway.
+		const teamsLookup = cfbdKey ? await this.fetchCfbdTeamsLookup(sport === "football" ? "college-football" : "mens-college-basketball", cfbdKey).catch(() => null) : null;
+
 		const games = source.type === "hawkeyes"
-			? await this.fetchHawkeyesTeamSchedule(sport, team, source.scheduleId)
-			: await this.fetchSidearmRssSchedule(sport, team, source.host, source.sportId);
+			? await this.fetchHawkeyesTeamSchedule(sport, team, source.scheduleId, teamsLookup)
+			: await this.fetchSidearmRssSchedule(sport, team, source.host, source.sportId, teamsLookup);
 
 		this.collegeTeamCache[key] = { games, fetchedAt: Date.now() };
 		return games;
 	},
 
-	async fetchHawkeyesTeamSchedule (sport, team, scheduleId) {
+	// Falls back to the name/logo already available from the schedule source
+	// itself (which is always at least a full team name) if there's no CFBD
+	// teams lookup at all, or that specific team isn't in it.
+	async resolveCollegeTeamDisplay (teamsLookup, name, fallbackLogo) {
+		const match = teamsLookup && teamsLookup.get(name);
+		const logoUrl = match?.logo || fallbackLogo || "";
+		const logo = logoUrl ? await this.cacheLogo(logoUrl) : "";
+		return { abbreviation: match?.abbreviation || name, logo };
+	},
+
+	async fetchHawkeyesTeamSchedule (sport, team, scheduleId, teamsLookup) {
 		const url = `https://hawkeyesports.com/website-api/schedule-events?filter[schedule_id]=${scheduleId}&sort=datetime&per_page=50&page=1`;
 		const response = await fetch(url, { headers: ESPN_HEADERS });
 		if (!response.ok) {
 			throw new Error(`HTTP ${response.status}`);
 		}
 		const data = await response.json();
-		return (data.data || []).map((event) => this.parseHawkeyesEvent(sport, team, event));
+		return Promise.all((data.data || []).map((event) => this.parseHawkeyesEvent(sport, team, event, teamsLookup)));
 	},
 
-	parseHawkeyesEvent (sport, team, event) {
+	async parseHawkeyesEvent (sport, team, event, teamsLookup) {
 		// This site hasn't shown a completed or live game yet to confirm the
 		// exact status values for those (or any score fields) - confirmed by
 		// testing that TBD/unconfirmed future games report status as null
@@ -984,8 +1000,12 @@ module.exports = NodeHelper.create({
 		const isHome = event.venue_type === "home";
 		const opponentName = event.opponent_school_name || event.opponent_name || "TBD";
 
-		const teamSide = { name: team, abbreviation: team, logo: "", score: "0", rank: null };
-		const opponentSide = { name: opponentName, abbreviation: opponentName, logo: "", score: "0", rank: null };
+		const [teamDisplay, opponentDisplay] = await Promise.all([
+			this.resolveCollegeTeamDisplay(teamsLookup, team, ""),
+			this.resolveCollegeTeamDisplay(teamsLookup, opponentName, "")
+		]);
+		const teamSide = { name: team, ...teamDisplay, score: "0", rank: null };
+		const opponentSide = { name: opponentName, ...opponentDisplay, score: "0", rank: null };
 
 		return {
 			id: String(event.id || ""),
@@ -1005,14 +1025,14 @@ module.exports = NodeHelper.create({
 		};
 	},
 
-	async fetchSidearmRssSchedule (sport, team, host, sportId) {
+	async fetchSidearmRssSchedule (sport, team, host, sportId, teamsLookup) {
 		const url = `${host}/calendar.ashx/calendar.rss?sport_id=${sportId}`;
 		const response = await fetch(url, { headers: ESPN_HEADERS });
 		if (!response.ok) {
 			throw new Error(`HTTP ${response.status}`);
 		}
 		const xml = await response.text();
-		return this.parseSidearmRssItems(xml).map((item) => this.parseSidearmRssGame(sport, team, host, item));
+		return Promise.all(this.parseSidearmRssItems(xml).map((item) => this.parseSidearmRssGame(sport, team, host, item, teamsLookup)));
 	},
 
 	// Sidearm's RSS calendar feed uses a small set of flat, non-nested
@@ -1054,7 +1074,7 @@ module.exports = NodeHelper.create({
 			.replace(/&#39;/g, "'");
 	},
 
-	parseSidearmRssGame (sport, team, host, item) {
+	async parseSidearmRssGame (sport, team, host, item, teamsLookup) {
 		// Completed games get a "[W]"/"[L]"/"[T]" prefix on the title and a
 		// "W 77-71"-style result line in the description; anything without
 		// that prefix is still upcoming - there's no separate live-game
@@ -1075,8 +1095,12 @@ module.exports = NodeHelper.create({
 		}
 
 		const opponentName = item.opponent || "TBD";
-		const teamSide = { name: team, abbreviation: team, logo: item.teamLogo || "", score: teamScore, rank: null };
-		const opponentSide = { name: opponentName, abbreviation: opponentName, logo: item.opponentLogo || "", score: opponentScore, rank: null };
+		const [teamDisplay, opponentDisplay] = await Promise.all([
+			this.resolveCollegeTeamDisplay(teamsLookup, team, item.teamLogo),
+			this.resolveCollegeTeamDisplay(teamsLookup, opponentName, item.opponentLogo)
+		]);
+		const teamSide = { name: team, ...teamDisplay, score: teamScore, rank: null };
+		const opponentSide = { name: opponentName, ...opponentDisplay, score: opponentScore, rank: null };
 
 		return {
 			id: item.gameId || "",
