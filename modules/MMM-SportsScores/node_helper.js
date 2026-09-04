@@ -86,13 +86,21 @@ const BALLDONTLIE_MAX_REQUESTS_PER_MINUTE = 4;
 // section below) but whose own athletics department site has real, extractable
 // schedule data. Two different site platforms, two different extraction
 // methods - see fetchHawkeyesTeamSchedule/fetchNuxtTeamSchedule.
+// Sidearm Sports (the CMS platform behind cyclones.com/unipanthers.com/
+// gocreighton.com/godrakebulldogs.com) publishes a legacy but stable RSS
+// calendar feed at a fixed path on every site, regardless of which frontend
+// template generation that site is otherwise running - confirmed the same
+// schema works identically across all four, including full-season history
+// with final scores. sportId is school-specific (not a shared numbering
+// scheme), found by scanning each site's feed until the channel title matched.
 const COLLEGE_TEAM_SOURCES = {
 	"football/Iowa": { type: "hawkeyes", scheduleId: 1196 },
-	"football/Iowa State": { type: "nuxt", host: "https://cyclones.com", sportSlug: "football" },
+	"football/Iowa State": { type: "sidearm-rss", host: "https://cyclones.com", sportId: 1 },
 	"basketball/Iowa": { type: "hawkeyes", scheduleId: 1338 },
-	"basketball/Iowa State": { type: "nuxt", host: "https://cyclones.com", sportSlug: "mens-basketball" },
-	"basketball/Northern Iowa": { type: "nuxt", host: "https://unipanthers.com", sportSlug: "mens-basketball" },
-	"basketball/Creighton": { type: "nuxt", host: "https://gocreighton.com", sportSlug: "mens-basketball" }
+	"basketball/Iowa State": { type: "sidearm-rss", host: "https://cyclones.com", sportId: 4 },
+	"basketball/Northern Iowa": { type: "sidearm-rss", host: "https://unipanthers.com", sportId: 3 },
+	"basketball/Creighton": { type: "sidearm-rss", host: "https://gocreighton.com", sportId: 18 },
+	"basketball/Drake": { type: "sidearm-rss", host: "https://godrakebulldogs.com", sportId: 5 }
 };
 
 // A team's full schedule barely changes once released (just game results
@@ -100,12 +108,6 @@ const COLLEGE_TEAM_SOURCES = {
 // re-fetched every refresh cycle - these are small athletics department
 // sites, not a resourced API, and deserve a light touch.
 const COLLEGE_TEAM_SCHEDULE_TTL_MS = 3 * 60 * 60 * 1000;
-
-// Tags used by Nuxt's SSR payload serialization format (the reference-array
-// scheme in the page's __NUXT_DATA__ script) that just wrap a plain value
-// reference - resolving through them is enough for our purposes, since we
-// don't need actual Vue reactivity, just the underlying data.
-const NUXT_TRANSPARENT_TAGS = new Set(["Reactive", "ShallowReactive", "Ref", "ShallowRef", "EmptyRef", "EmptyShallowRef"]);
 
 // balldontlie doesn't include team logos, but ESPN's static logo CDN is just
 // image assets (not an API endpoint), so it isn't affected by the reliability
@@ -880,7 +882,7 @@ module.exports = NodeHelper.create({
 
 		const games = source.type === "hawkeyes"
 			? await this.fetchHawkeyesTeamSchedule(sport, team, source.scheduleId)
-			: await this.fetchNuxtTeamSchedule(sport, team, source.host, source.sportSlug);
+			: await this.fetchSidearmRssSchedule(sport, team, source.host, source.sportId);
 
 		this.collegeTeamCache[key] = { games, fetchedAt: Date.now() };
 		return games;
@@ -929,109 +931,94 @@ module.exports = NodeHelper.create({
 		};
 	},
 
-	async fetchNuxtTeamSchedule (sport, team, host, sportSlug) {
-		const url = `${host}/sports/${sportSlug}/schedule`;
+	async fetchSidearmRssSchedule (sport, team, host, sportId) {
+		const url = `${host}/calendar.ashx/calendar.rss?sport_id=${sportId}`;
 		const response = await fetch(url, { headers: ESPN_HEADERS });
 		if (!response.ok) {
 			throw new Error(`HTTP ${response.status}`);
 		}
-		const html = await response.text();
-		const match = html.match(/<script[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
-		if (!match) {
-			throw new Error("No __NUXT_DATA__ found on page");
-		}
-		const arr = JSON.parse(match[1]);
-
-		// Only unwrap (not deep-resolve) down to the "schedule" branch specifically,
-		// rather than resolving the whole payload - other branches (site-config,
-		// layout, etc.) have hit shapes this resolver doesn't handle, and we don't
-		// need them anyway.
-		const root = arr[this.unwrapNuxtRef(arr, 0)];
-		const pinia = arr[this.unwrapNuxtRef(arr, root.pinia)];
-		const scheduleIdx = this.unwrapNuxtRef(arr, pinia.schedule);
-		const schedule = this.resolveNuxtValue(arr, scheduleIdx);
-
-		const schedulesObj = (schedule && schedule.schedules) || {};
-		const scheduleKey = Object.keys(schedulesObj).find((k) => k.startsWith(`schedules-${sportSlug},`));
-		const games = scheduleKey ? (schedulesObj[scheduleKey].games || []) : [];
-		return games.map((game) => this.parseNuxtTeamGame(sport, team, host, game));
+		const xml = await response.text();
+		return this.parseSidearmRssItems(xml).map((item) => this.parseSidearmRssGame(sport, team, host, item));
 	},
 
-	// Follows Nuxt's tagged reference wrappers (e.g. ["Reactive", 11] meaning
-	// "the real value is at index 11") to the index they actually point to,
-	// without resolving anything else - used to walk down to a specific
-	// branch before doing a full recursive resolve on just that subtree.
-	unwrapNuxtRef (arr, idx) {
-		let val = arr[idx];
-		while (Array.isArray(val) && val.length === 2 && typeof val[0] === "string" && NUXT_TRANSPARENT_TAGS.has(val[0])) {
-			idx = val[1];
-			val = arr[idx];
+	// Sidearm's RSS calendar feed uses a small set of flat, non-nested
+	// namespaced tags per <item> - simple enough that pulling in a full XML
+	// parser dependency isn't worth it for this.
+	parseSidearmRssItems (xml) {
+		const field = (block, tag) => {
+			// No wildcard after the tag name - some of these tags (s:opponent /
+			// s:opponentlogo) are prefixes of each other, and a "match any
+			// attributes" wildcard there would let this slide into the wrong tag.
+			const m = block.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`));
+			return m ? this.decodeXmlEntities(m[1].trim()) : "";
+		};
+		const items = [];
+		const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+		let match;
+		while ((match = itemRegex.exec(xml))) {
+			const block = match[1];
+			items.push({
+				title: field(block, "title"),
+				description: field(block, "description"),
+				startDate: field(block, "ev:startdate"),
+				localStartDate: field(block, "s:localstartdate"),
+				teamLogo: field(block, "s:teamlogo"),
+				opponentLogo: field(block, "s:opponentlogo"),
+				opponent: field(block, "s:opponent"),
+				gameId: field(block, "s:gameid")
+			});
 		}
-		return idx;
+		return items;
 	},
 
-	// Fully resolves a subtree of Nuxt's SSR payload reference-array format
-	// into plain data - each array entry is either a primitive, a tagged
-	// reference, or a plain object/array whose values are themselves indices
-	// into the same array.
-	resolveNuxtValue (arr, idx, seen) {
-		seen = seen || new Set();
-		if (seen.has(idx)) {
-			return null;
-		}
-		seen.add(idx);
-		const val = arr[idx];
-		if (val === null || typeof val !== "object") {
-			return val;
-		}
-		if (Array.isArray(val)) {
-			if (val.length === 2 && typeof val[0] === "string" && NUXT_TRANSPARENT_TAGS.has(val[0])) {
-				return this.resolveNuxtValue(arr, val[1], seen);
-			}
-			if (val.length === 2 && val[0] === "Set") {
-				return arr[val[1]].map((i) => this.resolveNuxtValue(arr, i, seen));
-			}
-			if (val.length === 2 && val[0] === "Map") {
-				const result = {};
-				for (const [k, v] of arr[val[1]]) {
-					const resolvedKey = typeof k === "number" ? this.resolveNuxtValue(arr, k, seen) : k;
-					result[resolvedKey] = this.resolveNuxtValue(arr, v, seen);
-				}
-				return result;
-			}
-			return val.map((i) => this.resolveNuxtValue(arr, i, seen));
-		}
-		const result = {};
-		for (const [k, v] of Object.entries(val)) {
-			result[k] = this.resolveNuxtValue(arr, v, seen);
-		}
-		return result;
+	decodeXmlEntities (text) {
+		return text
+			.replace(/&amp;/g, "&")
+			.replace(/&lt;/g, "<")
+			.replace(/&gt;/g, ">")
+			.replace(/&quot;/g, "\"")
+			.replace(/&#39;/g, "'");
 	},
 
-	parseNuxtTeamGame (sport, team, host, game) {
-		// Confirmed by testing that TBD/unconfirmed future games report this
-		// as null rather than "SCHEDULED" - same reasoning as
-		// parseHawkeyesEvent above, defaults to "pre" rather than "in".
-		const stateDisplay = (game.game_state_display || "").toUpperCase();
-		const state = stateDisplay.includes("FINAL") ? "post" : "pre";
-		const isHome = game.location_indicator === "H";
-		const opponentName = game.opponent?.title || "TBD";
+	parseSidearmRssGame (sport, team, host, item) {
+		// Completed games get a "[W]"/"[L]"/"[T]" prefix on the title and a
+		// "W 77-71"-style result line in the description; anything without
+		// that prefix is still upcoming - there's no separate live-game
+		// state observed in this feed at all, so it can only ever report
+		// "pre" or "post".
+		const resultMatch = item.title.match(/\[(W|L|T)\]/);
+		const state = resultMatch ? "post" : "pre";
+		const isHome = / vs /.test(item.title);
 
-		const teamSide = { name: team, abbreviation: team, logo: "", score: "0", rank: null };
-		const opponentSide = { name: opponentName, abbreviation: opponentName, logo: game.opponent?.image?.fullpath || "", score: "0", rank: null };
+		let teamScore = "0";
+		let opponentScore = "0";
+		if (resultMatch) {
+			const scoreMatch = item.description.match(/[WLT]\s+(\d+)-(\d+)/);
+			if (scoreMatch) {
+				teamScore = scoreMatch[1];
+				opponentScore = scoreMatch[2];
+			}
+		}
+
+		const opponentName = item.opponent || "TBD";
+		const teamSide = { name: team, abbreviation: team, logo: item.teamLogo || "", score: teamScore, rank: null };
+		const opponentSide = { name: opponentName, abbreviation: opponentName, logo: item.opponentLogo || "", score: opponentScore, rank: null };
 
 		return {
-			id: String(game.id || ""),
+			id: item.gameId || "",
 			sport: sport || "",
 			league: "",
-			url: game.game_center_link ? `${host}${game.game_center_link}` : host,
+			url: item.gameId ? `${host}/calendar.aspx?game_id=${item.gameId}` : host,
 			homeRank: 99,
 			awayRank: 99,
 			homeTeam: isHome ? teamSide : opponentSide,
 			awayTeam: isHome ? opponentSide : teamSide,
 			state,
-			detail: state === "pre" ? (game.time || "Scheduled") : "",
-			eventDate: game.date || "",
+			detail: state === "post" ? "Final" : "",
+			// localStartDate has no timezone suffix (matches the local venue
+			// date), used here for date-matching against the requested day;
+			// startDate is genuine UTC, used for display time elsewhere.
+			eventDate: item.startDate.replace(/\.\d+Z$/, "Z") || item.localStartDate,
 			situation: null,
 			favoriteIsHome: isHome,
 			favoriteIsAway: !isHome
