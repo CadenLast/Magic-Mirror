@@ -38,7 +38,13 @@
         </div>
       </div>
       <div class="scores-header-right">
-        {% if not isRankings %}
+        {% if isRankings %}
+          {% if standingsGroups.length > 0 %}
+            <div class="standings-view-toggle">
+              <span class="standings-view-label">{{ standingsGroups[0].name }}</span>
+            </div>
+          {% endif %}
+        {% else %}
           <div class="standings-view-toggle">
             <span class="standings-view-label">{{ 'Division' if standingsView == 'division' else 'League' }}</span>
           </div>
@@ -141,7 +147,9 @@
             <div class="scores-games standings-list">
               {% for group in standingsGroups %}
                 <div class="standings-group">
-                  <div class="standings-group-header">{{ group.name }}</div>
+                  {% if not isRankings %}
+                    <div class="standings-group-header">{{ group.name }}</div>
+                  {% endif %}
                   {% for team in group.teams %}
                     <div class="standings-row">
                       <span class="standings-rank">{{ team.rank if isRankings else team.seed }}</span>
