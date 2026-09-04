@@ -509,9 +509,12 @@
 
 /* Cap the team name to the widest abbreviation (4 letters, e.g. "UTAH") so
    the score sits at a fixed spot on the left instead of stretching to the
-   row's far edge, keeping scores lined up across every sport. */
+   row's far edge, keeping scores lined up across every sport. 5ch, not 4ch,
+   since "ch" is based on the "0" character's width and some real 4-letter
+   abbreviations (e.g. "TA&M", "MICH") are made of wider letters that
+   overflow a box sized for exactly 4 average-width characters. */
 .scores-team-row .scores-abbr {
-  flex: 0 0 4ch;
+  flex: 0 0 5ch;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
