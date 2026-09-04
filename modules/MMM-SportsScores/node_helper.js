@@ -298,7 +298,16 @@ module.exports = NodeHelper.create({
 		});
 
 		const collegeFetches = (collegeTeams || []).map(async ({ sport, team }, index) => {
-			await sleep((Object.keys(leagueMap).length + index) * 400);
+			// Only worth staggering when a real fetch is about to happen - the
+			// schedule cache lasts hours, so on every refresh/day-switch after
+			// the first, this is almost always already cached and skipping the
+			// artificial delay here is what actually matters for feeling snappy.
+			this.collegeTeamCache = this.collegeTeamCache || {};
+			const cached = this.collegeTeamCache[`${sport}/${team}`];
+			const isCacheHit = cached && Date.now() - cached.fetchedAt < COLLEGE_TEAM_SCHEDULE_TTL_MS;
+			if (!isCacheHit) {
+				await sleep((Object.keys(leagueMap).length + index) * 400);
+			}
 			try {
 				const game = await this.fetchCollegeTeamGameForDate(sport, team, date, cfbdKey);
 				if (game) {
