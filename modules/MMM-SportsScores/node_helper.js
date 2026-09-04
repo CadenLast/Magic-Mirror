@@ -1,9 +1,19 @@
 const { execFile } = require("child_process");
 const util = require("util");
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
 const NodeHelper = require("node_helper");
 const Log = require("logger");
 
 const execFileAsync = util.promisify(execFile);
+
+// Downloaded team logos are cached here instead of re-fetching from ESPN's/
+// CFBD's CDN on every render - MagicMirror serves any file under a module's
+// own directory automatically, so no custom serving route is needed. Not
+// committed to git (see .gitignore) since these are downloaded binary
+// assets, not source.
+const LOGO_CACHE_DIR = path.join(__dirname, "cache", "logos");
 
 // A generic scraper-shaped request (Node's default fetch sends "User-Agent: node"
 // and little else) is an easy flag for ESPN/Akamai's bot detection, so this sends
@@ -144,6 +154,39 @@ module.exports = NodeHelper.create({
 			return "ap-poll";
 		}
 		return this.getProvider(sport, league);
+	},
+
+	// Downloads a logo image once and serves it from the module's own cache
+	// directory afterward, instead of hitting the remote CDN on every render.
+	// Returns the local (module-relative) URL on success, or the original
+	// remote URL unchanged if the download fails, so a bad download degrades
+	// to today's behavior rather than showing a broken image.
+	async cacheLogo (url) {
+		if (!url) {
+			return "";
+		}
+
+		const ext = (url.match(/\.(png|jpe?g|svg|gif|webp)(?:$|\?)/i) || [, "png"])[1].toLowerCase();
+		const filename = `${crypto.createHash("sha1").update(url).digest("hex")}.${ext}`;
+		const filePath = path.join(LOGO_CACHE_DIR, filename);
+		const publicUrl = `modules/MMM-SportsScores/cache/logos/${filename}`;
+
+		if (fs.existsSync(filePath)) {
+			return publicUrl;
+		}
+
+		try {
+			const response = await fetch(url);
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			fs.mkdirSync(LOGO_CACHE_DIR, { recursive: true });
+			fs.writeFileSync(filePath, Buffer.from(await response.arrayBuffer()));
+			return publicUrl;
+		} catch (error) {
+			Log.warn(`${this.name}: Failed to cache logo ${url}: ${error.message}`);
+			return url;
+		}
 	},
 
 	// Builds an ESPN URL against the given host, or - if an espnProxy is
@@ -847,10 +890,11 @@ module.exports = NodeHelper.create({
 		if (!apPoll) {
 			throw new Error("No AP Top 25 poll in latest CFBD week");
 		}
-		return apPoll.ranks.map((r) => {
+		return Promise.all(apPoll.ranks.map(async (r) => {
 			const team = teamsLookup.get(r.school);
-			return { rank: r.rank, name: r.school, abbreviation: team?.abbreviation || r.school, logo: team?.logo || "", record: "" };
-		});
+			const logo = await this.cacheLogo(team?.logo);
+			return { rank: r.rank, name: r.school, abbreviation: team?.abbreviation || r.school, logo, record: "" };
+		}));
 	},
 
 	// CollegeBasketballData's /rankings returns a flat list of one row per
@@ -871,13 +915,14 @@ module.exports = NodeHelper.create({
 				continue;
 			}
 			const latestWeek = Math.max(...ranked.map((e) => e.week));
-			return ranked
+			const topTeams = ranked
 				.filter((e) => e.week === latestWeek)
-				.sort((a, b) => a.ranking - b.ranking)
-				.map((r) => {
-					const team = teamsLookup.get(r.team);
-					return { rank: r.ranking, name: r.team, abbreviation: team?.abbreviation || r.team, logo: team?.logo || "", record: "" };
-				});
+				.sort((a, b) => a.ranking - b.ranking);
+			return Promise.all(topTeams.map(async (r) => {
+				const team = teamsLookup.get(r.team);
+				const logo = await this.cacheLogo(team?.logo);
+				return { rank: r.ranking, name: r.team, abbreviation: team?.abbreviation || r.team, logo, record: "" };
+			}));
 		}
 		throw new Error("No CFBD/CBBD AP poll data available for either candidate season");
 	},
