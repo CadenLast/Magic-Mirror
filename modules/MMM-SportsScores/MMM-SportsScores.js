@@ -575,6 +575,8 @@ Module.register("MMM-SportsScores", {
 			top25: sport.top25 || false,
 			espnProxy: this.config.espnProxy,
 			balldontlieKeys: this.config.balldontlieKeys,
+			collegeTeams: this.config.collegeTeams,
+			cfbdKey: this.config.cfbdKey,
 			requestId: this.requestId
 		});
 	},

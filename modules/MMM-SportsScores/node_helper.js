@@ -69,6 +69,13 @@ const BALLDONTLIE_LEAGUE_PATHS = {
 // CollegeBasketballData.com, both leagues sharing one CFBD API key. Polls
 // only publish weekly, so this is cached well past a single refresh cycle.
 const AP_POLL_LEAGUES = new Set(["college-football", "mens-college-basketball"]);
+
+// The NCAAF/NCAAB tabs show the union of the specifically-tracked college
+// teams' games (same RSS/API sources as their favorites) instead of a real
+// league-wide feed - there's no reliable free source for that at all, which
+// is the whole reason those teams are handled individually in the first
+// place. This fully removes ESPN from the picture for these two leagues.
+const COLLEGE_TEAMS_AGGREGATE_LEAGUES = new Set(["college-football", "mens-college-basketball"]);
 const AP_POLL_TTL_MS = 60 * 60 * 1000;
 
 // Games/standings already refresh on their own minute-based cycle, so
@@ -153,6 +160,9 @@ module.exports = NodeHelper.create({
 		if (BALLDONTLIE_LEAGUE_PATHS[league] && balldontlieKeys && balldontlieKeys[league]) {
 			return "balldontlie";
 		}
+		if (COLLEGE_TEAMS_AGGREGATE_LEAGUES.has(league)) {
+			return "college-teams-aggregate";
+		}
 		return this.getProvider(sport, league);
 	},
 
@@ -217,7 +227,7 @@ module.exports = NodeHelper.create({
 	// out a league's games/standings, fall back to the last successful result
 	// for that exact query - a refresh showing slightly-stale-but-correct data
 	// beats one showing nothing.
-	async fetchGamesForProvider (sport, league, date, top25, proxy, balldontlieKeys) {
+	async fetchGamesForProvider (sport, league, date, top25, proxy, balldontlieKeys, collegeTeams, cfbdKey) {
 		const cacheKey = `${sport}/${league}/${date}/${top25}`;
 		this.gamesCache = this.gamesCache || {};
 		const cached = this.gamesCache[cacheKey];
@@ -226,7 +236,7 @@ module.exports = NodeHelper.create({
 		}
 
 		try {
-			const games = await this.fetchGamesForProviderUncached(sport, league, date, top25, proxy, balldontlieKeys);
+			const games = await this.fetchGamesForProviderUncached(sport, league, date, top25, proxy, balldontlieKeys, collegeTeams, cfbdKey);
 			this.gamesCache[cacheKey] = { games, fetchedAt: Date.now() };
 			return games;
 		} catch (error) {
@@ -238,7 +248,7 @@ module.exports = NodeHelper.create({
 		}
 	},
 
-	async fetchGamesForProviderUncached (sport, league, date, top25, proxy, balldontlieKeys) {
+	async fetchGamesForProviderUncached (sport, league, date, top25, proxy, balldontlieKeys, collegeTeams, cfbdKey) {
 		const provider = this.getGameProvider(sport, league, balldontlieKeys);
 		if (provider === "mlb") {
 			return this.fetchMlbGames(date);
@@ -249,6 +259,9 @@ module.exports = NodeHelper.create({
 		if (provider === "balldontlie") {
 			return this.fetchBalldontlieGames(sport, league, date, balldontlieKeys[league]);
 		}
+		if (provider === "college-teams-aggregate") {
+			return this.fetchCollegeTeamsAggregateGames(sport, date, collegeTeams, cfbdKey);
+		}
 		if (provider === "espn-core") {
 			return this.fetchEspnCoreGames(sport, league, date, top25, proxy);
 		}
@@ -256,10 +269,10 @@ module.exports = NodeHelper.create({
 	},
 
 	async fetchScores (payload) {
-		const { sport, league, date, top25, espnProxy, balldontlieKeys, requestId } = payload;
+		const { sport, league, date, top25, espnProxy, balldontlieKeys, collegeTeams, cfbdKey, requestId } = payload;
 
 		try {
-			const games = await this.fetchGamesForProvider(sport, league, date, top25, espnProxy, balldontlieKeys);
+			const games = await this.fetchGamesForProvider(sport, league, date, top25, espnProxy, balldontlieKeys, collegeTeams, cfbdKey);
 			games.sort((a, b) => {
 				if (a.state === "in" && b.state !== "in") return -1;
 				if (a.state !== "in" && b.state === "in") return 1;
@@ -291,7 +304,7 @@ module.exports = NodeHelper.create({
 		const fetches = Object.values(leagueMap).map(async ({ sport, league, teams }, index) => {
 			await sleep(index * 400);
 			try {
-				const games = await this.fetchGamesForProvider(sport, league, date, false, espnProxy, balldontlieKeys);
+				const games = await this.fetchGamesForProvider(sport, league, date, false, espnProxy, balldontlieKeys, collegeTeams, cfbdKey);
 
 				for (const game of games) {
 					const homeName = game.homeTeam.name.toLowerCase();
@@ -331,23 +344,7 @@ module.exports = NodeHelper.create({
 		});
 
 		await Promise.all([...fetches, ...collegeFetches]);
-
-		// When two favorited college teams play each other, their schedules
-		// each report the same real-world game independently, so it'd
-		// otherwise show up twice - collapse anything with the same two
-		// teams/sport/date down to one entry.
-		const seen = new Set();
-		const dedupedGames = allGames.filter((game) => {
-			const teams = [game.homeTeam.name, game.awayTeam.name].sort().join("|");
-			const key = `${game.sport}|${teams}|${(game.eventDate || "").slice(0, 10)}`;
-			if (seen.has(key)) {
-				return false;
-			}
-			seen.add(key);
-			return true;
-		});
-
-		this.sendSocketNotification("FAVORITES_DATA", { games: dedupedGames, requestId });
+		this.sendSocketNotification("FAVORITES_DATA", { games: this.dedupeGamesByMatchup(allGames), requestId });
 	},
 
 	async fetchStandings (payload) {
@@ -955,6 +952,37 @@ module.exports = NodeHelper.create({
 	// Two different site platforms need two different extraction approaches;
 	// see COLLEGE_TEAM_SOURCES above for which team uses which.
 	// ---------------------------------------------------------------------
+
+	// When two tracked college teams play each other, both of their
+	// schedules report the same real-world game independently, so it'd
+	// otherwise show up twice - collapse anything with the same two
+	// teams/sport/date down to one entry.
+	dedupeGamesByMatchup (games) {
+		const seen = new Set();
+		return games.filter((game) => {
+			const teams = [game.homeTeam.name, game.awayTeam.name].sort().join("|");
+			const key = `${game.sport}|${teams}|${(game.eventDate || "").slice(0, 10)}`;
+			if (seen.has(key)) {
+				return false;
+			}
+			seen.add(key);
+			return true;
+		});
+	},
+
+	// Used as the actual "NCAAF"/"NCAAB" tab content instead of a real
+	// league-wide feed - there's no reliable free source for that (the whole
+	// reason these are per-team RSS/API sources in the first place), so this
+	// just shows the union of whatever your specifically-tracked teams are
+	// playing that day, same source as the college team favorites above.
+	async fetchCollegeTeamsAggregateGames (sport, date, collegeTeams, cfbdKey) {
+		const relevantTeams = (collegeTeams || []).filter((t) => t.sport === sport);
+		const games = await Promise.all(relevantTeams.map((t) => this.fetchCollegeTeamGameForDate(t.sport, t.team, date, cfbdKey).catch((error) => {
+			Log.error(`${this.name}: Error fetching ${t.sport}/${t.team} for the ${sport} tab:`, error.message);
+			return null;
+		})));
+		return this.dedupeGamesByMatchup(games.filter(Boolean));
+	},
 
 	async fetchCollegeTeamGameForDate (sport, team, date, cfbdKey) {
 		const games = await this.fetchCollegeTeamSchedule(sport, team, cfbdKey);
