@@ -33,7 +33,11 @@ Module.register("MMM-SportsScores", {
 		// source (there isn't a reliable free one for NCAAF/NCAAB game data).
 		// e.g. [{ sport: "football", team: "Iowa" }] - see COLLEGE_TEAM_SOURCES
 		// in node_helper.js for which teams are actually supported.
-		collegeTeams: []
+		collegeTeams: [],
+		// Optional: a CollegeFootballData.com API key (also works directly on
+		// its sister site CollegeBasketballData.com - same account). Used for
+		// NCAAF/NCAAB "standings", which is actually the AP Top 25 poll.
+		cfbdKey: ""
 	},
 
 	getScripts () {
@@ -600,7 +604,7 @@ Module.register("MMM-SportsScores", {
 			top25: sport.top25 || false,
 			view: this.standingsView,
 			espnProxy: this.config.espnProxy,
-			balldontlieKeys: this.config.balldontlieKeys,
+			cfbdKey: this.config.cfbdKey,
 			requestId: this.standingsRequestId
 		});
 	},

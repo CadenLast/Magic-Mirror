@@ -54,25 +54,12 @@ const BALLDONTLIE_LEAGUE_PATHS = {
 	nba: "nba"
 };
 
-// balldontlie's Games/Rankings endpoints for NCAAF/NCAAB need a paid tier, but
-// Standings is free - confirmed directly against their docs (ncaaf/ncaab
-// .balldontlie.io) and by testing. Standings there are queried per-conference
-// though (no "all conferences" option), so a full refresh needs one request
-// per conference.
-const BALLDONTLIE_STANDINGS_LEAGUE_PATHS = {
-	"college-football": "ncaaf",
-	"mens-college-basketball": "ncaab"
-};
-
-// balldontlie's NCAAF conferences include FCS (second-tier) conferences; this
-// narrows it down to the FBS ones the module actually covers elsewhere.
-const NCAAF_FBS_CONFERENCES = new Set(["ACC", "American", "Big 12", "Big Ten", "CUSA", "FBS Indep.", "MAC", "Mountain West", "Pac-12", "SEC", "Sun Belt"]);
-
-// Conference standings change slowly (at most once a week, when games are
-// played) and a full refresh takes minutes given the per-conference rate
-// limit, so this is fetched in the background on a long interval rather than
-// live per-request.
-const BALLDONTLIE_STANDINGS_TTL_MS = 30 * 60 * 1000;
+// NCAAF/NCAAB "standings" are actually the AP Top 25 poll (see
+// fetchApPollStandings below) via CollegeFootballData.com/
+// CollegeBasketballData.com, both leagues sharing one CFBD API key. Polls
+// only publish weekly, so this is cached well past a single refresh cycle.
+const AP_POLL_LEAGUES = new Set(["college-football", "mens-college-basketball"]);
+const AP_POLL_TTL_MS = 60 * 60 * 1000;
 
 // balldontlie's published free-tier limit is 5 requests/min per key. This is a
 // hard cap on OUR OWN usage, enforced globally per API key value across every
@@ -151,9 +138,9 @@ module.exports = NodeHelper.create({
 		return this.getProvider(sport, league);
 	},
 
-	getStandingsProvider (sport, league, balldontlieKeys) {
-		if (BALLDONTLIE_STANDINGS_LEAGUE_PATHS[league] && balldontlieKeys && balldontlieKeys[league]) {
-			return "balldontlie";
+	getStandingsProvider (sport, league, cfbdKey) {
+		if (AP_POLL_LEAGUES.has(league) && cfbdKey) {
+			return "ap-poll";
 		}
 		return this.getProvider(sport, league);
 	},
@@ -299,12 +286,12 @@ module.exports = NodeHelper.create({
 	},
 
 	async fetchStandings (payload) {
-		const { sport, league, top25, view, espnProxy, balldontlieKeys, requestId } = payload;
+		const { sport, league, top25, view, espnProxy, cfbdKey, requestId } = payload;
 		const cacheKey = `${sport}/${league}/${top25}/${view}`;
 		this.standingsCache = this.standingsCache || {};
 
 		try {
-			const result = await this.fetchStandingsUncached(sport, league, top25, view, espnProxy, balldontlieKeys);
+			const result = await this.fetchStandingsUncached(sport, league, top25, view, espnProxy, cfbdKey);
 			this.standingsCache[cacheKey] = result;
 			this.sendSocketNotification("STANDINGS_DATA", { ...result, requestId });
 		} catch (error) {
@@ -318,16 +305,16 @@ module.exports = NodeHelper.create({
 		}
 	},
 
-	async fetchStandingsUncached (sport, league, top25, view, espnProxy, balldontlieKeys) {
-		const provider = this.getStandingsProvider(sport, league, balldontlieKeys);
+	async fetchStandingsUncached (sport, league, top25, view, espnProxy, cfbdKey) {
+		const provider = this.getStandingsProvider(sport, league, cfbdKey);
 		if (provider === "mlb") {
 			return this.fetchMlbStandings(view);
 		}
 		if (provider === "nhl") {
 			return this.fetchNhlStandings(view);
 		}
-		if (provider === "balldontlie") {
-			return this.fetchBalldontlieStandings(league, balldontlieKeys[league]);
+		if (provider === "ap-poll") {
+			return this.fetchApPollStandings(league, cfbdKey);
 		}
 		if (provider === "espn-core") {
 			return this.fetchEspnCoreStandings(league, top25, view, espnProxy);
@@ -776,81 +763,79 @@ module.exports = NodeHelper.create({
 	},
 
 	// ---------------------------------------------------------------------
-	// NCAAF/NCAAB standings - also balldontlie, but queried per-conference with
-	// no "all conferences" option, so a full refresh needs many sequential
-	// requests. Fetched in the background on a long interval (see the TTL/gap
-	// constants above) rather than live per-request; fetchBalldontlieStandings
-	// just serves whatever's cached and kicks off a refresh if it's stale.
+	// NCAAF/NCAAB "standings" - the AP Top 25 poll, from CollegeFootballData.com
+	// and its sister site CollegeBasketballData.com (same account/key, same
+	// team behind both - confirmed the existing CFBD key works directly on
+	// the basketball API too). Polls publish weekly and aren't live data, so
+	// none of the concerns that ruled CFBD out for live scores apply here.
+	// Replaced full conference-by-conference standings (previously via
+	// balldontlie) with just the poll - a smaller, different dataset, but far
+	// simpler and requested specifically over the full table.
 	// ---------------------------------------------------------------------
 
-	async fetchBalldontlieStandings (league, apiKey) {
-		this.balldontlieStandingsCache = this.balldontlieStandingsCache || {};
-		const cached = this.balldontlieStandingsCache[league];
-		const isStale = !cached || Date.now() - cached.fetchedAt > BALLDONTLIE_STANDINGS_TTL_MS;
-
-		if (isStale) {
-			this.refreshBalldontlieStandings(league, apiKey);
+	async fetchApPollStandings (league, apiKey) {
+		const cacheKey = league;
+		this.apPollCache = this.apPollCache || {};
+		const cached = this.apPollCache[cacheKey];
+		if (cached && Date.now() - cached.fetchedAt < AP_POLL_TTL_MS) {
+			return { isRankings: true, groups: [{ name: "AP Top 25", teams: cached.teams }] };
 		}
 
-		if (!cached) {
-			throw new Error("Standings are still loading for the first time - this can take a few minutes");
-		}
+		const teams = league === "college-football"
+			? await this.fetchCfbdFootballApPoll(apiKey)
+			: await this.fetchCfbdBasketballApPoll(apiKey);
 
-		return { isRankings: false, groups: cached.groups };
+		this.apPollCache[cacheKey] = { teams, fetchedAt: Date.now() };
+		return { isRankings: true, groups: [{ name: "AP Top 25", teams }] };
 	},
 
-	async refreshBalldontlieStandings (league, apiKey) {
-		this.balldontlieStandingsRefreshing = this.balldontlieStandingsRefreshing || {};
-		if (this.balldontlieStandingsRefreshing[league]) {
-			return;
+	async fetchCfbdJson (url, apiKey) {
+		const response = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+		if (!response.ok) {
+			throw new Error(`HTTP ${response.status}`);
 		}
-		this.balldontlieStandingsRefreshing[league] = true;
-
-		try {
-			const leaguePath = BALLDONTLIE_STANDINGS_LEAGUE_PATHS[league];
-			const season = new Date().getFullYear();
-			const conferencesUrl = `https://api.balldontlie.io/${leaguePath}/v1/conferences`;
-			const conferencesResponse = await this.balldontlieFetch(apiKey, conferencesUrl);
-			if (!conferencesResponse.ok) {
-				throw new Error(`HTTP ${conferencesResponse.status}`);
-			}
-			const conferencesData = await conferencesResponse.json();
-			let conferences = conferencesData.data || [];
-			if (league === "college-football") {
-				conferences = conferences.filter((c) => NCAAF_FBS_CONFERENCES.has(c.name));
-			}
-
-			const groups = [];
-			for (const conference of conferences) {
-				const url = `https://api.balldontlie.io/${leaguePath}/v1/standings?conference_id=${conference.id}&season=${season}`;
-				const response = await this.balldontlieFetch(apiKey, url);
-				if (!response.ok) {
-					Log.warn(`${this.name}: Skipping ${conference.name} standings after HTTP ${response.status}`);
-					continue;
-				}
-				const data = await response.json();
-				const teams = (data.data || []).map((entry) => this.parseBalldontlieStandingsEntry(entry));
-				groups.push({ name: conference.name, teams });
-			}
-
-			this.balldontlieStandingsCache[league] = { groups, fetchedAt: Date.now() };
-		} catch (error) {
-			Log.error(`${this.name}: Error refreshing balldontlie standings for ${league}:`, error.message);
-		} finally {
-			this.balldontlieStandingsRefreshing[league] = false;
-		}
+		return response.json();
 	},
 
-	parseBalldontlieStandingsEntry (entry) {
-		return {
-			seed: "",
-			name: entry.team?.full_name || "",
-			abbreviation: entry.team?.abbreviation || "",
-			logo: "",
-			record: `${entry.wins ?? 0}-${entry.losses ?? 0}`,
-			stat: entry.win_percentage != null ? entry.win_percentage.toFixed(3).replace(/^0\./, ".") : "",
-			gamesBehind: entry.games_behind != null ? String(entry.games_behind) : "-"
-		};
+	// CFBD groups football rankings by week, with every poll (AP, Coaches,
+	// etc.) nested inside each week's entry.
+	async fetchCfbdFootballApPoll (apiKey) {
+		const year = new Date().getFullYear();
+		const data = await this.fetchCfbdJson(`https://api.collegefootballdata.com/rankings?year=${year}`, apiKey);
+		if (!data.length) {
+			throw new Error("No CFBD rankings data available");
+		}
+		const latestWeek = data.reduce((max, entry) => (entry.week > max.week ? entry : max), data[0]);
+		const apPoll = (latestWeek.polls || []).find((p) => p.poll === "AP Top 25");
+		if (!apPoll) {
+			throw new Error("No AP Top 25 poll in latest CFBD week");
+		}
+		return apPoll.ranks.map((r) => ({ rank: r.rank, name: r.school, abbreviation: r.school, logo: "", record: "" }));
+	},
+
+	// CollegeBasketballData's /rankings returns a flat list of one row per
+	// team per week per poll (not grouped like football's), and its "season"
+	// is named by the year the season ENDS in (unlike football, which is
+	// named by the year it starts) - since there's a real off-season gap
+	// where neither the just-finished nor the next season has a poll yet,
+	// this tries the season that should be "current" by month first and
+	// falls back to the prior one if that's empty.
+	async fetchCfbdBasketballApPoll (apiKey) {
+		const now = new Date();
+		const likelyCurrentSeason = now.getMonth() >= 9 ? now.getFullYear() + 1 : now.getFullYear();
+		for (const season of [likelyCurrentSeason, likelyCurrentSeason - 1]) {
+			const data = await this.fetchCfbdJson(`https://api.collegebasketballdata.com/rankings?season=${season}&pollType=ap`, apiKey);
+			const ranked = data.filter((e) => e.ranking != null);
+			if (ranked.length === 0) {
+				continue;
+			}
+			const latestWeek = Math.max(...ranked.map((e) => e.week));
+			return ranked
+				.filter((e) => e.week === latestWeek)
+				.sort((a, b) => a.ranking - b.ranking)
+				.map((r) => ({ rank: r.ranking, name: r.team, abbreviation: r.team, logo: "", record: "" }));
+		}
+		throw new Error("No CFBD/CBBD AP poll data available for either candidate season");
 	},
 
 	// ---------------------------------------------------------------------

@@ -167,7 +167,8 @@ let config = {
 					{ sport: "basketball", team: "Creighton" },
 					{ sport: "basketball", team: "Drake" }
 				],
-				balldontlieKeys: keys.balldontlie
+				balldontlieKeys: keys.balldontlie,
+				cfbdKey: keys.cfbd
 			}
 		},
 		{
