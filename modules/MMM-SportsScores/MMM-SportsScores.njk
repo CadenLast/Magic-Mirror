@@ -154,14 +154,16 @@
                   {% endif %}
                   {% for team in group.teams %}
                     <div class="standings-row">
-                      <span class="standings-rank">{{ team.rank if isRankings else team.seed }}</span>
-                      {% if showLogos and team.logo %}
-                        <img class="scores-logo" src="{{ team.logo }}" alt="" />
-                      {% endif %}
-                      <span class="scores-abbr {{ 'standings-abbr-wide' if isRankings }} {{ 'scores-favorite' if team.isFavorite }}">{{ team.abbreviation }}</span>
-                      <span class="standings-record">{{ team.record }}</span>
+                      <span class="standings-team">
+                        <span class="standings-rank">{{ team.rank if isRankings else team.seed }}</span>
+                        {% if showLogos and team.logo %}
+                          <img class="scores-logo" src="{{ team.logo }}" alt="" />
+                        {% endif %}
+                        <span class="scores-abbr {{ 'standings-abbr-wide' if isRankings }} {{ 'scores-favorite' if team.isFavorite }}">{{ team.abbreviation }}</span>
+                      </span>
+                      <span class="standings-record {{ 'standings-record-wide' if isHockey }}">{{ team.record }}</span>
                       {% if not isRankings %}
-                        <span class="standings-stat">{{ team.stat }}</span>
+                        <span class="standings-stat {{ 'standings-stat-wide' if isHockey }}">{{ team.stat }}</span>
                         {% if hasGamesBehind %}
                           <span class="standings-gb">{{ team.gamesBehind }}</span>
                         {% endif %}

@@ -199,6 +199,7 @@ Module.register("MMM-SportsScores", {
 			standingsGroups: this.annotateStandingsFavorites(this.standingsGroups),
 			hasGamesBehind: this.standingsHasGamesBehind(this.standingsGroups),
 			isRankings: this.isRankingsView,
+			isHockey: this.config.sports[this.activeSportIndex].league === "nhl",
 			standingsView: this.standingsView
 		};
 	},
@@ -362,6 +363,7 @@ Module.register("MMM-SportsScores", {
 		}
 
 		const hasGamesBehind = this.standingsHasGamesBehind(this.standingsGroups);
+		const isHockey = this.config.sports[this.activeSportIndex].league === "nhl";
 		const groupsHtml = this.annotateStandingsFavorites(this.standingsGroups).map((group) => {
 			const teamsHtml = group.teams.map((team) => {
 				const logo = (this.config.showLogos && team.logo)
@@ -369,16 +371,20 @@ Module.register("MMM-SportsScores", {
 					: "";
 				const rankOrSeed = this._escapeHtml(this.isRankingsView ? team.rank : team.seed);
 				const gb = hasGamesBehind ? `<span class="standings-gb">${this._escapeHtml(team.gamesBehind)}</span>` : "";
+				const statClass = ["standings-stat", isHockey ? "standings-stat-wide" : ""].filter(Boolean).join(" ");
 				const extra = this.isRankingsView
 					? ""
-					: `<span class="standings-stat">${this._escapeHtml(team.stat)}</span>
+					: `<span class="${statClass}">${this._escapeHtml(team.stat)}</span>
 					   ${gb}`;
 				const abbrClass = ["scores-abbr", this.isRankingsView ? "standings-abbr-wide" : "", team.isFavorite ? "scores-favorite" : ""].filter(Boolean).join(" ");
+				const recordClass = ["standings-record", isHockey ? "standings-record-wide" : ""].filter(Boolean).join(" ");
 				return `<div class="standings-row">
-					<span class="standings-rank">${rankOrSeed}</span>
-					${logo}
-					<span class="${abbrClass}">${this._escapeHtml(team.abbreviation)}</span>
-					<span class="standings-record">${this._escapeHtml(team.record)}</span>
+					<span class="standings-team">
+						<span class="standings-rank">${rankOrSeed}</span>
+						${logo}
+						<span class="${abbrClass}">${this._escapeHtml(team.abbreviation)}</span>
+					</span>
+					<span class="${recordClass}">${this._escapeHtml(team.record)}</span>
 					${extra}
 				</div>`;
 			}).join("");

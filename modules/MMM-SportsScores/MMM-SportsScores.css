@@ -229,12 +229,24 @@
 .standings-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 4px;
   padding: 5px 6px;
   border-radius: 5px;
   background: rgba(0, 0, 0, 0.2);
   font-size: 0.78em;
   color: var(--color-text);
+}
+
+/* Groups rank + logo + abbreviation as one block so space-between (which
+   evenly spaces every direct child of standings-row) spaces this whole
+   block against the record/stat/gb columns, instead of prying the rank,
+   logo and team name apart from each other too. */
+.standings-team {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 
 .standings-row .scores-logo {
@@ -272,11 +284,11 @@
 }
 
 .standings-record {
-  /* 9ch, not 7ch - NHL's win-loss-OT record ("41-30-11") needs up to 8
-     characters, and digits are all the same width under tabular-nums so
-     this doesn't need the same "wide letters" buffer as the abbreviation
-     column, just room for the actual longest real value. */
-  flex: 0 0 9ch;
+  /* 6ch fits every non-hockey record ("100-62", "10-6-1"). Right-aligning a
+     column this wide already leaves a little breathing room before shorter
+     values like "70-71" - going wider than the longest real value just
+     pushes the record further from the team name for no reason. */
+  flex: 0 0 6ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
   overflow: hidden;
@@ -284,14 +296,25 @@
   text-overflow: ellipsis;
 }
 
+.standings-record.standings-record-wide {
+  /* NHL's win-loss-OT record ("41-30-11") needs up to 8 characters. */
+  flex-basis: 9ch;
+}
+
 .standings-stat {
-  flex: 0 0 7ch;
+  /* 5ch fits every non-hockey stat (a win percentage like ".593" or
+     "1.000"). NHL's "123 PTS" needs standings-stat-wide instead. */
+  flex: 0 0 5ch;
   text-align: right;
   opacity: 0.75;
   font-size: 0.9em;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.standings-stat.standings-stat-wide {
+  flex-basis: 7ch;
 }
 
 .standings-gb {
