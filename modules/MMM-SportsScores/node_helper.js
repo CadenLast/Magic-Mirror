@@ -963,18 +963,29 @@ module.exports = NodeHelper.create({
 			return cached.games;
 		}
 
-		// The AP poll's CFBD/CBBD teams lookup (real abbreviations + logos) is
-		// reused here too, rather than falling back to full names - these
-		// sources give full school names, not short codes, and this data is
-		// already fetched and cached long-term for the AP poll anyway.
-		const teamsLookup = cfbdKey ? await this.fetchCfbdTeamsLookup(sport === "football" ? "college-football" : "mens-college-basketball", cfbdKey).catch(() => null) : null;
+		try {
+			// The AP poll's CFBD/CBBD teams lookup (real abbreviations + logos) is
+			// reused here too, rather than falling back to full names - these
+			// sources give full school names, not short codes, and this data is
+			// already fetched and cached long-term for the AP poll anyway.
+			const teamsLookup = cfbdKey ? await this.fetchCfbdTeamsLookup(sport === "football" ? "college-football" : "mens-college-basketball", cfbdKey).catch(() => null) : null;
 
-		const games = source.type === "hawkeyes"
-			? await this.fetchHawkeyesTeamSchedule(sport, team, source.scheduleId, teamsLookup)
-			: await this.fetchSidearmRssSchedule(sport, team, source.host, source.sportId, teamsLookup);
+			const games = source.type === "hawkeyes"
+				? await this.fetchHawkeyesTeamSchedule(sport, team, source.scheduleId, teamsLookup)
+				: await this.fetchSidearmRssSchedule(sport, team, source.host, source.sportId, teamsLookup);
 
-		this.collegeTeamCache[key] = { games, fetchedAt: Date.now() };
-		return games;
+			this.collegeTeamCache[key] = { games, fetchedAt: Date.now() };
+			return games;
+		} catch (error) {
+			// A single small athletics site having a bad moment shouldn't make
+			// that team's favorite silently vanish for this refresh cycle -
+			// same cache-fallback pattern as fetchGamesForProvider below.
+			if (cached) {
+				Log.warn(`${this.name}: Using cached schedule for ${key} after fetch failure: ${error.message}`);
+				return cached.games;
+			}
+			throw error;
+		}
 	},
 
 	// Falls back to the name/logo already available from the schedule source
