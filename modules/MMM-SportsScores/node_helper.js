@@ -1,12 +1,8 @@
-const { execFile } = require("child_process");
-const util = require("util");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const NodeHelper = require("node_helper");
 const Log = require("logger");
-
-const execFileAsync = util.promisify(execFile);
 
 // Downloaded team logos are cached here instead of re-fetching from ESPN's/
 // CFBD's CDN on every render - MagicMirror serves any file under a module's
@@ -16,43 +12,27 @@ const execFileAsync = util.promisify(execFile);
 const LOGO_CACHE_DIR = path.join(__dirname, "cache", "logos");
 
 // A generic scraper-shaped request (Node's default fetch sends "User-Agent: node"
-// and little else) is an easy flag for ESPN/Akamai's bot detection, so this sends
-// a browser-looking User-Agent. Deliberately NOT sending Accept/Accept-Language/
-// Referer/Origin alongside it - confirmed via direct testing that this specific
-// combination (without the matching sec-fetch-*/sec-ch-ua headers a real browser
-// would also send) gets an empty response on at least one real network, while
-// User-Agent alone - or paired with just one of those headers - works reliably.
-const ESPN_HEADERS = {
+// and little else) is an easy flag for bot detection on small athletics sites, so
+// this sends a browser-looking User-Agent instead - used by the Hawkeyes/Sidearm
+// RSS fetches below. Deliberately NOT sending Accept/Accept-Language/Referer/Origin
+// alongside it - confirmed via direct testing that this specific combination
+// (without the matching sec-fetch-*/sec-ch-ua headers a real browser would also
+// send) gets an empty response on at least one real network, while User-Agent
+// alone - or paired with just one of those headers - works reliably.
+const BROWSER_HEADERS = {
 	"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36"
 };
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-// MLB and NHL both publish their own free, key-less, official APIs, so those two
-// sports don't need to go through ESPN at all. The rest use ESPN's public
-// website data (cdn.espn.com "core" pages) rather than the hidden mobile API
-// (site.api.espn.com), since Akamai blocks that one but not this one - and,
-// unlike the free tier of alternatives such as TheSportsDB (which silently
-// omits most of a day's games), it's actually complete when it works.
+// MLB and NHL both publish their own free, key-less, official APIs. NFL/NBA use
+// balldontlie, NCAAF/NCAAB use the college-teams-aggregate/AP-poll providers
+// below - see getGameProvider/getStandingsProvider. Nothing in this module calls
+// ESPN at all anymore.
 const NATIVE_PROVIDERS = {
 	"baseball/mlb": "mlb",
-	"hockey/nhl": "nhl",
-	"football/nfl": "espn-core",
-	"basketball/nba": "espn-core",
-	"football/college-football": "espn-core",
-	"basketball/mens-college-basketball": "espn-core"
+	"hockey/nhl": "nhl"
 };
-
-// NFL and college football are scheduled in weeks, and the core scoreboard page
-// ignores a plain "dates=" query - it only respects an explicit year/seasontype/week
-// combination, so browsing to a specific date means walking the season's calendar
-// (returned alongside the current week's data) to find which week contains it.
-// NBA and college basketball are scheduled daily, and "dates=YYYYMMDD" works as-is.
-const WEEK_BASED_LEAGUES = new Set(["nfl", "college-football"]);
-
-// The core rankings ("AP Top 25" style poll) page only exists for college football;
-// college basketball has no equivalent page under cdn.espn.com.
-const RANKINGS_SUPPORTED_LEAGUES = new Set(["college-football"]);
 
 // balldontlie.io - a real licensed sports data API with a well-behaved, published
 // rate limit (not adversarial bot mitigation) - covers game/score data for these
@@ -172,7 +152,7 @@ module.exports = NodeHelper.create({
 	},
 
 	getProvider (sport, league) {
-		return NATIVE_PROVIDERS[`${sport}/${league}`] || "espn";
+		return NATIVE_PROVIDERS[`${sport}/${league}`] || null;
 	},
 
 	// Games/scores prefer balldontlie over the default provider when a key is
@@ -233,29 +213,13 @@ module.exports = NodeHelper.create({
 		}
 	},
 
-	// Builds an ESPN URL against the given host, or - if an espnProxy is
-	// configured in config.js - the equivalent URL through that proxy (a
-	// Cloudflare Worker, typically) so the request comes from a different IP
-	// than this Pi's.
-	buildEspnUrl (host, path, query, proxy) {
-		const base = proxy && proxy.url ? `${proxy.url.replace(/\/$/, "")}/proxy` : host;
-		const url = new URL(`${base}${path}`);
-		for (const [key, value] of Object.entries(query || {})) {
-			url.searchParams.set(key, value);
-		}
-		if (proxy && proxy.url && proxy.key) {
-			url.searchParams.set("key", proxy.key);
-		}
-		return url.toString();
-	},
-
-	// ESPN's core pages have an irreducible rate of transient failures no amount
-	// of retrying fully eliminates. Rather than let one bad refresh cycle wipe
-	// out a league's games/standings, fall back to the last successful result
-	// for that exact query - a refresh showing slightly-stale-but-correct data
-	// beats one showing nothing.
-	async fetchGamesForProvider (sport, league, date, top25, proxy, balldontlieKeys, collegeTeams, cfbdKey) {
-		const cacheKey = `${sport}/${league}/${date}/${top25}`;
+	// Small athletics/schedule sites have an irreducible rate of transient
+	// failures no amount of retrying fully eliminates. Rather than let one bad
+	// refresh cycle wipe out a league's games/standings, fall back to the last
+	// successful result for that exact query - a refresh showing
+	// slightly-stale-but-correct data beats one showing nothing.
+	async fetchGamesForProvider (sport, league, date, balldontlieKeys, collegeTeams, cfbdKey) {
+		const cacheKey = `${sport}/${league}/${date}`;
 		this.gamesCache = this.gamesCache || {};
 		const cached = this.gamesCache[cacheKey];
 		if (cached && Date.now() - cached.fetchedAt < GAMES_FRESHNESS_TTL_MS) {
@@ -263,7 +227,7 @@ module.exports = NodeHelper.create({
 		}
 
 		try {
-			const games = await this.fetchGamesForProviderUncached(sport, league, date, top25, proxy, balldontlieKeys, collegeTeams, cfbdKey);
+			const games = await this.fetchGamesForProviderUncached(sport, league, date, balldontlieKeys, collegeTeams, cfbdKey);
 			this.gamesCache[cacheKey] = { games, fetchedAt: Date.now() };
 			return games;
 		} catch (error) {
@@ -275,7 +239,7 @@ module.exports = NodeHelper.create({
 		}
 	},
 
-	async fetchGamesForProviderUncached (sport, league, date, top25, proxy, balldontlieKeys, collegeTeams, cfbdKey) {
+	async fetchGamesForProviderUncached (sport, league, date, balldontlieKeys, collegeTeams, cfbdKey) {
 		const provider = this.getGameProvider(sport, league, balldontlieKeys);
 		if (provider === "mlb") {
 			return this.fetchMlbGames(date);
@@ -289,17 +253,14 @@ module.exports = NodeHelper.create({
 		if (provider === "college-teams-aggregate") {
 			return this.fetchCollegeTeamsAggregateGames(sport, date, collegeTeams, cfbdKey);
 		}
-		if (provider === "espn-core") {
-			return this.fetchEspnCoreGames(sport, league, date, top25, proxy);
-		}
-		return this.fetchEspnGames(sport, league, date, top25, proxy);
+		throw new Error(`No data source configured for ${sport}/${league}`);
 	},
 
 	async fetchScores (payload) {
-		const { sport, league, date, top25, espnProxy, balldontlieKeys, collegeTeams, cfbdKey, requestId } = payload;
+		const { sport, league, date, balldontlieKeys, collegeTeams, cfbdKey, requestId } = payload;
 
 		try {
-			const games = await this.fetchGamesForProvider(sport, league, date, top25, espnProxy, balldontlieKeys, collegeTeams, cfbdKey);
+			const games = await this.fetchGamesForProvider(sport, league, date, balldontlieKeys, collegeTeams, cfbdKey);
 			games.sort((a, b) => {
 				if (a.state === "in" && b.state !== "in") return -1;
 				if (a.state !== "in" && b.state === "in") return 1;
@@ -313,7 +274,7 @@ module.exports = NodeHelper.create({
 	},
 
 	async fetchFavorites (payload) {
-		const { date, favorites, collegeTeams, espnProxy, balldontlieKeys, cfbdKey, requestId } = payload;
+		const { date, favorites, collegeTeams, balldontlieKeys, cfbdKey, requestId } = payload;
 
 		const leagueMap = {};
 		for (const fav of favorites) {
@@ -331,7 +292,7 @@ module.exports = NodeHelper.create({
 		const fetches = Object.values(leagueMap).map(async ({ sport, league, teams }, index) => {
 			await sleep(index * 400);
 			try {
-				const games = await this.fetchGamesForProvider(sport, league, date, false, espnProxy, balldontlieKeys, collegeTeams, cfbdKey);
+				const games = await this.fetchGamesForProvider(sport, league, date, balldontlieKeys, collegeTeams, cfbdKey);
 
 				for (const game of games) {
 					const homeName = game.homeTeam.name.toLowerCase();
@@ -382,12 +343,12 @@ module.exports = NodeHelper.create({
 	},
 
 	async fetchStandings (payload) {
-		const { sport, league, top25, view, espnProxy, cfbdKey, balldontlieKeys, requestId } = payload;
-		const cacheKey = `${sport}/${league}/${top25}/${view}`;
+		const { sport, league, view, cfbdKey, balldontlieKeys, requestId } = payload;
+		const cacheKey = `${sport}/${league}/${view}`;
 		this.standingsCache = this.standingsCache || {};
 
 		try {
-			const result = await this.fetchStandingsUncached(sport, league, top25, view, espnProxy, cfbdKey, balldontlieKeys);
+			const result = await this.fetchStandingsUncached(sport, league, view, cfbdKey, balldontlieKeys);
 			this.standingsCache[cacheKey] = result;
 			this.sendSocketNotification("STANDINGS_DATA", { ...result, requestId });
 		} catch (error) {
@@ -401,7 +362,7 @@ module.exports = NodeHelper.create({
 		}
 	},
 
-	async fetchStandingsUncached (sport, league, top25, view, espnProxy, cfbdKey, balldontlieKeys) {
+	async fetchStandingsUncached (sport, league, view, cfbdKey, balldontlieKeys) {
 		const provider = this.getStandingsProvider(sport, league, cfbdKey, balldontlieKeys);
 		if (provider === "balldontlie-standings") {
 			return this.fetchBalldontlieStandings(league, balldontlieKeys[league], view);
@@ -415,359 +376,15 @@ module.exports = NodeHelper.create({
 		if (provider === "ap-poll") {
 			return this.fetchApPollStandings(league, cfbdKey);
 		}
-		if (provider === "espn-core") {
-			return this.fetchEspnCoreStandings(league, top25, view, espnProxy);
-		}
-		return this.fetchEspnStandings(sport, league, top25, view, espnProxy);
-	},
-
-	// ---------------------------------------------------------------------
-	// ESPN (NFL, NBA, NCAAF, NCAAB)
-	// ---------------------------------------------------------------------
-
-	async fetchEspnGames (sport, league, date, top25, proxy) {
-		const url = this.buildEspnUrl("https://site.api.espn.com", `/apis/site/v2/sports/${sport}/${league}/scoreboard`, { dates: date }, proxy);
-		const response = await fetch(url, { headers: ESPN_HEADERS });
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}`);
-		}
-		const data = await response.json();
-		let games = this.parseGames(data, sport, league);
-		if (top25) {
-			games = games.filter((g) => g.homeRank <= 25 || g.awayRank <= 25);
-		}
-		return games;
-	},
-
-	async fetchEspnStandings (sport, league, top25, view, proxy) {
-		if (top25) {
-			const url = this.buildEspnUrl("https://site.api.espn.com", `/apis/site/v2/sports/${sport}/${league}/rankings`, {}, proxy);
-			const response = await fetch(url, { headers: ESPN_HEADERS });
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}`);
-			}
-			const data = await response.json();
-			const poll = (data.rankings || [])[0];
-			const teams = (poll?.ranks || []).map((r) => ({
-				rank: r.current,
-				name: r.team?.displayName || `${r.team?.location || ""} ${r.team?.name || ""}`.trim(),
-				abbreviation: r.team?.abbreviation || "",
-				logo: r.team?.logos?.[0]?.href || "",
-				record: r.recordSummary || ""
-			}));
-			return { isRankings: true, groups: [{ name: poll?.name || "Rankings", teams }] };
-		}
-
-		const level = view === "division" ? 3 : 2;
-		const url = this.buildEspnUrl("https://site.api.espn.com", `/apis/v2/sports/${sport}/${league}/standings`, { level }, proxy);
-		const response = await fetch(url, { headers: ESPN_HEADERS });
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}`);
-		}
-		const data = await response.json();
-		const groups = this.collectStandingsGroups(data);
-		return { isRankings: false, groups };
-	},
-
-	collectStandingsGroups (node, groups = []) {
-		if (node.standings && node.standings.entries) {
-			groups.push({
-				name: node.name || node.abbreviation || "",
-				teams: node.standings.entries.map((entry) => this.parseStandingsEntry(entry))
-			});
-		}
-		if (node.children) {
-			for (const child of node.children) {
-				this.collectStandingsGroups(child, groups);
-			}
-		}
-		return groups;
-	},
-
-	parseStandingsEntry (entry) {
-		const statsByName = {};
-		for (const s of entry.stats || []) {
-			statsByName[s.name] = s.displayValue;
-		}
-
-		const wins = statsByName.wins || "0";
-		const losses = statsByName.losses || "0";
-		const ties = parseInt(statsByName.ties) || 0;
-		const otLosses = statsByName.otLosses;
-
-		let record;
-		let stat;
-		if (otLosses !== undefined) {
-			record = `${wins}-${losses}-${otLosses}`;
-			stat = statsByName.points ? `${statsByName.points} PTS` : (statsByName.winPercent || "");
-		} else if (ties > 0) {
-			record = `${wins}-${losses}-${ties}`;
-			stat = statsByName.winPercent || "";
-		} else {
-			record = `${wins}-${losses}`;
-			stat = statsByName.winPercent || "";
-		}
-
-		return {
-			seed: statsByName.playoffSeed || entry.team?.seed || "",
-			name: entry.team?.displayName || "",
-			abbreviation: entry.team?.abbreviation || "",
-			logo: entry.team?.logos?.[0]?.href || "",
-			record,
-			stat,
-			// null (not "-") when ESPN doesn't have this stat for the sport at
-			// all (e.g. NFL, which has no games-behind concept) - "-" is a
-			// legitimate displayed value for a division leader, so the two
-			// need to stay distinguishable for the frontend to know whether
-			// to show the column at all.
-			gamesBehind: statsByName.gamesBehind ?? null
-		};
-	},
-
-	parseGames (data, sport, league) {
-		if (!data.events) return [];
-
-		return data.events.map((event) => {
-			const competition = event.competitions?.[0];
-			if (!competition) return null;
-
-			const competitors = competition.competitors || [];
-			const homeComp = competitors.find((c) => c.homeAway === "home") || competitors[0];
-			const awayComp = competitors.find((c) => c.homeAway === "away") || competitors[1];
-
-			if (!homeComp || !awayComp) return null;
-
-			const status = event.status?.type || {};
-			const summaryLink = event.links?.find((l) => l.text === "Summary" || l.text === "Gamecast" || l.text === "Box Score");
-			const gameUrl = summaryLink?.href || `https://www.espn.com/${sport}/game/_/gameId/${event.id}`;
-
-			const homeRank = homeComp.curatedRank?.current || 99;
-			const awayRank = awayComp.curatedRank?.current || 99;
-
-			const state = status.state || "pre";
-
-			return {
-				id: event.id || "",
-				sport: sport || "",
-				league: league || "",
-				url: gameUrl,
-				homeRank,
-				awayRank,
-				homeTeam: {
-					name: homeComp.team?.displayName || "TBD",
-					abbreviation: homeComp.team?.abbreviation || "TBD",
-					logo: homeComp.team?.logo || "",
-					score: homeComp.score || "0",
-					rank: homeRank <= 25 ? homeRank : null
-				},
-				awayTeam: {
-					name: awayComp.team?.displayName || "TBD",
-					abbreviation: awayComp.team?.abbreviation || "TBD",
-					logo: awayComp.team?.logo || "",
-					score: awayComp.score || "0",
-					rank: awayRank <= 25 ? awayRank : null
-				},
-				state,
-				detail: status.shortDetail || status.detail || "",
-				eventDate: event.date || "",
-				situation: state === "in" ? this.parseSituation(competition, sport, homeComp, awayComp) : null
-			};
-		}).filter(Boolean);
-	},
-
-	parseSituation (competition, sport, homeComp, awayComp) {
-		const sit = competition.situation;
-		if (!sit) return null;
-
-		if (sport === "baseball") {
-			return {
-				type: "baseball",
-				outs: typeof sit.outs === "number" ? sit.outs : null,
-				onFirst: !!sit.onFirst,
-				onSecond: !!sit.onSecond,
-				onThird: !!sit.onThird
-			};
-		}
-
-		if (sport === "football") {
-			const text = sit.shortDownDistanceText || sit.downDistanceText || sit.possessionText || "";
-			if (!text) return null;
-			return {
-				type: "football",
-				text,
-				possessionIsHome: !!sit.possession && sit.possession === homeComp.team?.id,
-				possessionIsAway: !!sit.possession && sit.possession === awayComp.team?.id
-			};
-		}
-
-		return null;
-	},
-
-	// ---------------------------------------------------------------------
-	// ESPN core pages (NFL, NBA, NCAAF, NCAAB) - the public website-rendering
-	// API at cdn.espn.com, used instead of the hidden mobile API above because
-	// Akamai blocks that one from residential/datacenter IPs but not this one.
-	// ---------------------------------------------------------------------
-
-	// cdn.espn.com's Akamai bot-mitigation regularly answers fetch()-based
-	// requests (both Node's own fetch and Cloudflare Workers') with an empty
-	// 202 "hold on" response, but never a plain curl process - curl's TLS/HTTP
-	// fingerprint apparently isn't in the bucket it's suspicious of. So every
-	// core-page request shells out to curl instead of using fetch directly.
-	async curlGetJson (url) {
-		const args = ["-s", "--compressed", "--max-time", "15"];
-		for (const [key, value] of Object.entries(ESPN_HEADERS)) {
-			args.push("-H", `${key}: ${value}`);
-		}
-		args.push(url);
-		const { stdout } = await execFileAsync("curl", args, { maxBuffer: 20 * 1024 * 1024 });
-		return JSON.parse(stdout);
-	},
-
-	async fetchEspnCoreJson (url) {
-		const maxAttempts = 5;
-		for (let attempt = 1; ; attempt++) {
-			try {
-				return await this.curlGetJson(url);
-			} catch (error) {
-				if (attempt >= maxAttempts) {
-					throw error;
-				}
-				await sleep(750 * attempt);
-			}
-		}
-	},
-
-	async fetchEspnCoreGames (sport, league, date, top25, proxy) {
-		const host = "https://cdn.espn.com";
-		let events;
-		if (WEEK_BASED_LEAGUES.has(league)) {
-			events = await this.fetchEspnCoreWeekEvents(host, league, date, proxy);
-		} else {
-			const url = this.buildEspnUrl(host, `/core/${league}/scoreboard`, { xhr: 1, limit: 200, dates: date }, proxy);
-			const data = await this.fetchEspnCoreJson(url);
-			events = data.content?.sbData?.events || [];
-		}
-		let games = this.parseGames({ events }, sport, league);
-		if (top25) {
-			games = games.filter((g) => g.homeRank <= 25 || g.awayRank <= 25);
-		}
-		return games;
-	},
-
-	// Week-based leagues ignore "dates=" entirely, so getting a specific date's
-	// games means fetching the current week first (which also returns the
-	// season's full calendar), finding which week actually contains that date,
-	// and - if it isn't the week already fetched - fetching that week directly
-	// via explicit year/seasontype/week params.
-	async fetchEspnCoreWeekEvents (host, league, date, proxy) {
-		const baseUrl = this.buildEspnUrl(host, `/core/${league}/scoreboard`, { xhr: 1, limit: 200 }, proxy);
-		const baseData = await this.fetchEspnCoreJson(baseUrl);
-		const current = baseData.content?.dateParams || {};
-		const calendar = baseData.content?.calendar || [];
-		const target = date ? this.resolveCoreWeek(calendar, date, current) : null;
-
-		if (!target || (String(target.week) === String(current.week) && String(target.seasontype) === String(current.seasontype))) {
-			// Either no specific date was requested, or it falls in the week we
-			// already have - and if the date is outside this season's calendar
-			// entirely (far past/future), fall back to the current week rather
-			// than fetching a different season.
-			return baseData.content?.sbData?.events || [];
-		}
-
-		const url = this.buildEspnUrl(host, `/core/${league}/scoreboard`, { xhr: 1, limit: 200, year: target.year, seasontype: target.seasontype, week: target.week }, proxy);
-		const data = await this.fetchEspnCoreJson(url);
-		return data.content?.sbData?.events || [];
-	},
-
-	// Finds which calendar entry (week) contains the target date. The calendar
-	// is a list of season-phase groups (Preseason/Regular Season/Postseason),
-	// each with per-week entries carrying a startDate/endDate range.
-	resolveCoreWeek (calendar, date, current) {
-		const target = new Date(`${toIsoDate(date)}T12:00:00Z`);
-		for (const group of calendar) {
-			for (const entry of group.entries || []) {
-				if (target >= new Date(entry.startDate) && target <= new Date(entry.endDate)) {
-					return { year: current.year, seasontype: group.value, week: entry.value };
-				}
-			}
-		}
-		return null;
-	},
-
-	async fetchEspnCoreStandings (league, top25, view, proxy) {
-		const host = "https://cdn.espn.com";
-
-		if (top25) {
-			if (!RANKINGS_SUPPORTED_LEAGUES.has(league)) {
-				throw new Error(`Top 25 rankings aren't available for ${league} right now`);
-			}
-			const url = this.buildEspnUrl(host, `/core/${league}/rankings`, { xhr: 1 }, proxy);
-			const data = await this.fetchEspnCoreJson(url);
-			const poll = (data.content?.data?.rankings || [])[0];
-			const teams = (poll?.ranks || []).map((r) => ({
-				rank: r.rank,
-				name: r.team_display_name || "",
-				abbreviation: r.team_abbreviation || "",
-				logo: r.team_logo || "",
-				record: r.formatted_record || ""
-			}));
-			return { isRankings: true, groups: [{ name: poll?.name || "Rankings", teams }] };
-		}
-
-		const url = this.buildEspnUrl(host, `/core/${league}/standings`, { xhr: 1 }, proxy);
-		const data = await this.fetchEspnCoreJson(url);
-		const groups = this.collectCoreStandingsGroups(data.content?.standings || {}, view);
-		return { isRankings: false, groups };
-	},
-
-	// The core standings page nests groups arbitrarily deep (conference -> division,
-	// or sometimes just one level) instead of the hidden API's fixed children/level
-	// shape, so this walks down to the leaf group(s) that actually hold team entries.
-	collectCoreStandingsGroups (node, view) {
-		const isLeaf = (n) => n.standings && n.standings.entries && (!n.groups || n.groups.length === 0);
-
-		if (view === "division") {
-			const groups = [];
-			const walk = (n) => {
-				if (isLeaf(n)) {
-					groups.push({
-						name: n.name || n.abbreviation || "",
-						teams: n.standings.entries.map((entry) => this.parseStandingsEntry(entry))
-					});
-					return;
-				}
-				for (const child of n.groups || []) {
-					walk(child);
-				}
-			};
-			walk(node);
-			return groups;
-		}
-
-		return (node.groups || []).map((conference) => {
-			const entries = [];
-			const collect = (n) => {
-				if (isLeaf(n)) {
-					entries.push(...n.standings.entries);
-					return;
-				}
-				for (const child of n.groups || []) {
-					collect(child);
-				}
-			};
-			collect(conference);
-			const parsed = entries.map((entry) => this.parseStandingsEntry(entry));
-			parsed.sort((a, b) => (parseFloat(b.stat) || 0) - (parseFloat(a.stat) || 0));
-			return { name: conference.name || conference.abbreviation || "", teams: parsed };
-		});
+		throw new Error(`No data source configured for ${sport}/${league}`);
 	},
 
 	// ---------------------------------------------------------------------
 	// NFL/NBA - balldontlie.io. A licensed commercial sports data API with a
-	// real, published rate limit; its free tier scopes one API key to one sport
-	// and doesn't include standings, so standings still come from ESPN's core
-	// pages regardless of whether a balldontlie key is configured.
+	// real, published rate limit; its free tier scopes one API key to one
+	// sport. Standings are computed locally from its games data (see
+	// fetchBalldontlieStandings below) since its dedicated standings endpoint
+	// needs a paid tier.
 	// ---------------------------------------------------------------------
 
 	espnLogoUrl (league, abbreviation) {
@@ -1269,7 +886,7 @@ module.exports = NodeHelper.create({
 
 	async fetchHawkeyesTeamSchedule (sport, team, scheduleId, teamsLookup) {
 		const url = `https://hawkeyesports.com/website-api/schedule-events?filter[schedule_id]=${scheduleId}&sort=datetime&per_page=50&page=1`;
-		const response = await fetch(url, { headers: ESPN_HEADERS });
+		const response = await fetch(url, { headers: BROWSER_HEADERS });
 		if (!response.ok) {
 			throw new Error(`HTTP ${response.status}`);
 		}
@@ -1316,7 +933,7 @@ module.exports = NodeHelper.create({
 
 	async fetchSidearmRssSchedule (sport, team, host, sportId, teamsLookup) {
 		const url = `${host}/calendar.ashx/calendar.rss?sport_id=${sportId}`;
-		const response = await fetch(url, { headers: ESPN_HEADERS });
+		const response = await fetch(url, { headers: BROWSER_HEADERS });
 		if (!response.ok) {
 			throw new Error(`HTTP ${response.status}`);
 		}

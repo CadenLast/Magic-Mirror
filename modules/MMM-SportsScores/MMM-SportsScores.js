@@ -5,9 +5,7 @@ Module.register("MMM-SportsScores", {
 			{ label: "NBA", icon: "🏀", sport: "basketball", league: "nba" },
 			{ label: "MLB", icon: "⚾", sport: "baseball", league: "mlb" },
 			{ label: "NHL", icon: "🏒", sport: "hockey", league: "nhl" },
-			{ label: "NCAAF Top 25", icon: "🏈", sport: "football", league: "college-football", top25: true },
 			{ label: "NCAAF", icon: "🏈", sport: "football", league: "college-football" },
-			{ label: "NCAAB Top 25", icon: "🏀", sport: "basketball", league: "mens-college-basketball", top25: true },
 			{ label: "NCAAB", icon: "🏀", sport: "basketball", league: "mens-college-basketball" }
 		],
 		favoriteTeams: [],
@@ -16,17 +14,9 @@ Module.register("MMM-SportsScores", {
 		maxDaysAhead: 7,
 		maxDaysBehind: 7,
 		showLogos: true,
-		// Optional: route the NFL/NBA/NCAAF/NCAAB ESPN requests through a proxy
-		// (e.g. a Cloudflare Worker) instead of calling ESPN directly, to work
-		// around Akamai blocking a specific home IP. Leave url empty to call
-		// ESPN directly as normal.
-		espnProxy: {
-			url: "",
-			key: ""
-		},
 		// Optional: balldontlie.io API keys, one per sport/league (its free tier
-		// scopes a key to a single sport). Used for game/score data on sports
-		// listed here instead of ESPN; e.g. { nfl: "...", nba: "..." }.
+		// scopes a key to a single sport). Used for game/score and standings
+		// data on NFL/NBA; e.g. { nfl: "...", nba: "..." }.
 		balldontlieKeys: {},
 		// Optional: specific college teams to show as favorites, pulled directly
 		// from their own athletics department site rather than a league-wide
@@ -628,8 +618,6 @@ Module.register("MMM-SportsScores", {
 			sport: sport.sport,
 			league: sport.league,
 			date: targetDate,
-			top25: sport.top25 || false,
-			espnProxy: this.config.espnProxy,
 			balldontlieKeys: this.config.balldontlieKeys,
 			collegeTeams: this.config.collegeTeams,
 			cfbdKey: this.config.cfbdKey,
@@ -647,7 +635,6 @@ Module.register("MMM-SportsScores", {
 			date: targetDate,
 			favorites: this.config.favoriteTeams || [],
 			collegeTeams: this.config.collegeTeams || [],
-			espnProxy: this.config.espnProxy,
 			balldontlieKeys: this.config.balldontlieKeys,
 			cfbdKey: this.config.cfbdKey,
 			requestId: this.favoritesRequestId
@@ -660,9 +647,7 @@ Module.register("MMM-SportsScores", {
 		this.sendSocketNotification("FETCH_STANDINGS", {
 			sport: sport.sport,
 			league: sport.league,
-			top25: sport.top25 || false,
 			view: this.standingsView,
-			espnProxy: this.config.espnProxy,
 			cfbdKey: this.config.cfbdKey,
 			balldontlieKeys: this.config.balldontlieKeys,
 			requestId: this.standingsRequestId
