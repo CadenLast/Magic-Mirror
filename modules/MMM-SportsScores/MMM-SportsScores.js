@@ -43,8 +43,7 @@ Module.register("MMM-SportsScores", {
 		this.dayOffset = 0;
 		this.activeSportIndex = 0;
 		this.games = [];
-		this.loaded = false;
-		this.gamesLoading = false;
+		this.gamesLoading = true;
 		this.error = null;
 		this.requestId = null;
 		this.favoriteGames = [];
@@ -172,7 +171,6 @@ Module.register("MMM-SportsScores", {
 		});
 
 		return {
-			loaded: this.loaded,
 			error: this.error,
 			dateLabel: targetDate.format("ddd, MMM D"),
 			isToday: this.dayOffset === 0,
@@ -254,8 +252,18 @@ Module.register("MMM-SportsScores", {
 					if (index !== this.activeSportIndex) {
 						this.activeSportIndex = index;
 						this.updateSportLabel();
-						this.dimContent();
 						this._standingsOnlyUpdate = false;
+						// Clear the previous sport's games/standings instead of just
+						// dimming them - a throttled fetch (e.g. balldontlie's shared
+						// rate limit, or a cold NBA standings pull) can take a while,
+						// and leaving stale data dimmed underneath looks broken rather
+						// than loading.
+						this.games = [];
+						this.gamesLoading = true;
+						this.standingsGroups = [];
+						this.standingsLoaded = false;
+						this.standingsError = null;
+						this.updateDom(0);
 						this.fetchScores();
 						this.fetchStandings();
 					}
@@ -403,14 +411,6 @@ Module.register("MMM-SportsScores", {
 		column.style.opacity = "1";
 		this._standingsScrollUpdate = this.bindScrollIndicator(column.querySelector(".standings-list"), column.querySelector(".standings-container .scores-scroll-indicator"));
 		if (this._standingsScrollUpdate) this._standingsScrollUpdate();
-	},
-
-	dimContent () {
-		const wrapper = document.getElementById(this.identifier);
-		if (!wrapper) return;
-		wrapper.querySelectorAll(".scores-games-container, .standings-container, .scores-empty").forEach((el) => {
-			el.style.opacity = "0.3";
-		});
 	},
 
 	// Switching days used to just dim the previous day's games while the new
@@ -658,7 +658,6 @@ Module.register("MMM-SportsScores", {
 		if (notification === "SCORES_DATA" && payload.requestId === this.requestId) {
 			const oldGames = this.games;
 			this.games = payload.games;
-			this.loaded = true;
 			this.gamesLoading = false;
 			this.error = null;
 			if (this._canPatch(oldGames, payload.games)) {
@@ -668,7 +667,6 @@ Module.register("MMM-SportsScores", {
 			}
 		} else if (notification === "SCORES_ERROR" && payload.requestId === this.requestId) {
 			this.error = payload.message;
-			this.loaded = true;
 			this.gamesLoading = false;
 			this.updateDom(300);
 		} else if (notification === "FAVORITES_DATA" && payload.requestId === this.favoritesRequestId) {
