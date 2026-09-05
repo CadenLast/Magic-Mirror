@@ -137,12 +137,11 @@ let config = {
 			module: "MMM-SportsScores",
 			position: "top_left",
 			config: {
-				// NFL and NBA are back via balldontlie.io (a licensed API with a real,
-				// published rate limit - see config/keys.js, gitignored). NCAAF/NCAAB
-				// game/score data still depends on ESPN's core pages (unreliable on
-				// this network) since balldontlie's free tier gates their Games
-				// endpoint behind a paid plan - but Standings is free there, so at
-				// least NCAAF/NCAAB standings are solid even though scores aren't.
+				// NFL and NBA are on balldontlie.io (a licensed API with a real,
+				// published rate limit - see config/keys.js, gitignored). MLB/NHL use
+				// their own official free APIs. NCAAF/NCAAB don't use ESPN at all:
+				// "games" is the union of collegeTeams' own schedules below, and
+				// "standings" is the AP Top 25 poll via CFBD/CBBD (cfbdKey below).
 				sports: [
 					{ label: "NFL", icon: "🏈", sport: "football", league: "nfl" },
 					{ label: "NBA", icon: "🏀", sport: "basketball", league: "nba" },
