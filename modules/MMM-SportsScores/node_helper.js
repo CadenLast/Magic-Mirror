@@ -56,20 +56,13 @@ const RANKINGS_SUPPORTED_LEAGUES = new Set(["college-football"]);
 
 // balldontlie.io - a real licensed sports data API with a well-behaved, published
 // rate limit (not adversarial bot mitigation) - covers game/score data for these
-// leagues when a config.balldontlieKeys[league] API key is provided. Its
-// dedicated standings endpoint needs a paid tier, but standings are computed
-// locally from its free-tier season game results instead (see
-// fetchBalldontlieStandings below), so ESPN isn't needed for these two
-// leagues at all anymore.
+// leagues when a config.balldontlieKeys[league] API key is provided. Its free tier
+// doesn't include standings, so standings for these leagues still come from ESPN's
+// core pages regardless of whether a balldontlie key is configured.
 const BALLDONTLIE_LEAGUE_PATHS = {
 	nfl: "nfl",
 	nba: "nba"
 };
-
-// A full NBA season is ~1300 games (13+ paginated requests just to compute
-// standings once), so this is cached well past a single refresh cycle - an
-// hour is already far more often than win/loss records actually change.
-const BALLDONTLIE_STANDINGS_TTL_MS = 60 * 60 * 1000;
 
 // NCAAF/NCAAB "standings" are actually the AP Top 25 poll (see
 // fetchApPollStandings below) via CollegeFootballData.com/
@@ -190,12 +183,9 @@ module.exports = NodeHelper.create({
 		return this.getProvider(sport, league);
 	},
 
-	getStandingsProvider (sport, league, cfbdKey, balldontlieKeys) {
+	getStandingsProvider (sport, league, cfbdKey) {
 		if (AP_POLL_LEAGUES.has(league) && cfbdKey) {
 			return "ap-poll";
-		}
-		if (BALLDONTLIE_LEAGUE_PATHS[league] && balldontlieKeys && balldontlieKeys[league]) {
-			return "balldontlie-standings";
 		}
 		return this.getProvider(sport, league);
 	},
@@ -382,12 +372,12 @@ module.exports = NodeHelper.create({
 	},
 
 	async fetchStandings (payload) {
-		const { sport, league, top25, view, espnProxy, cfbdKey, balldontlieKeys, requestId } = payload;
+		const { sport, league, top25, view, espnProxy, cfbdKey, requestId } = payload;
 		const cacheKey = `${sport}/${league}/${top25}/${view}`;
 		this.standingsCache = this.standingsCache || {};
 
 		try {
-			const result = await this.fetchStandingsUncached(sport, league, top25, view, espnProxy, cfbdKey, balldontlieKeys);
+			const result = await this.fetchStandingsUncached(sport, league, top25, view, espnProxy, cfbdKey);
 			this.standingsCache[cacheKey] = result;
 			this.sendSocketNotification("STANDINGS_DATA", { ...result, requestId });
 		} catch (error) {
@@ -401,11 +391,8 @@ module.exports = NodeHelper.create({
 		}
 	},
 
-	async fetchStandingsUncached (sport, league, top25, view, espnProxy, cfbdKey, balldontlieKeys) {
-		const provider = this.getStandingsProvider(sport, league, cfbdKey, balldontlieKeys);
-		if (provider === "balldontlie-standings") {
-			return this.fetchBalldontlieStandings(league, balldontlieKeys[league], view);
-		}
+	async fetchStandingsUncached (sport, league, top25, view, espnProxy, cfbdKey) {
+		const provider = this.getStandingsProvider(sport, league, cfbdKey);
 		if (provider === "mlb") {
 			return this.fetchMlbStandings(view);
 		}
@@ -864,168 +851,6 @@ module.exports = NodeHelper.create({
 			eventDate: (league === "nba" ? game.datetime : game.date) || "",
 			situation: null
 		};
-	},
-
-	// balldontlie's dedicated standings endpoint needs a paid tier, but its
-	// free-tier games endpoint already includes each team's conference/
-	// division right on every game, and returns a full season (not just one
-	// day) when queried by season instead of by date - so standings can be
-	// computed directly from the same regular-season game results instead of
-	// depending on ESPN at all. Cached for an hour (BALLDONTLIE_STANDINGS_TTL_MS)
-	// since a full NBA season is ~1300 games (13+ paginated requests) - not
-	// something to redo on every refresh cycle, and win/loss records don't
-	// change faster than that anyway.
-	resolveBalldontlieSeason (league, now) {
-		const month = now.getMonth() + 1;
-		if (league === "nfl") {
-			// Season named by the year it starts (Sept) - still "last" season's
-			// number through the Feb Super Bowl, and defaults to the
-			// just-completed season through the summer off-season.
-			return month >= 8 ? now.getFullYear() : now.getFullYear() - 1;
-		}
-		// NBA: named by the year it starts (Oct) - "current" through the June
-		// Finals, defaults to the just-completed season the rest of the summer.
-		return month >= 10 ? now.getFullYear() : now.getFullYear() - 1;
-	},
-
-	async fetchBalldontlieTeamsLookup (league, apiKey) {
-		this.balldontlieTeamsCache = this.balldontlieTeamsCache || {};
-		const cached = this.balldontlieTeamsCache[league];
-		if (cached && Date.now() - cached.fetchedAt < CFBD_TEAMS_TTL_MS) {
-			return cached.teams;
-		}
-		const leaguePath = BALLDONTLIE_LEAGUE_PATHS[league];
-		const response = await this.balldontlieFetch(apiKey, `https://api.balldontlie.io/${leaguePath}/v1/teams`);
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}`);
-		}
-		const data = await response.json();
-		const teams = data.data || [];
-		this.balldontlieTeamsCache[league] = { teams, fetchedAt: Date.now() };
-		return teams;
-	},
-
-	async fetchBalldontlieSeasonGames (league, apiKey, season) {
-		const leaguePath = BALLDONTLIE_LEAGUE_PATHS[league];
-		const games = [];
-		let cursor = null;
-		for (;;) {
-			const url = `https://api.balldontlie.io/${leaguePath}/v1/games?seasons[]=${season}&per_page=100${cursor ? `&cursor=${cursor}` : ""}`;
-			const response = await this.balldontlieFetch(apiKey, url);
-			if (!response.ok) {
-				throw new Error(`HTTP ${response.status}`);
-			}
-			const data = await response.json();
-			games.push(...(data.data || []));
-			if (!data.meta?.next_cursor) {
-				break;
-			}
-			cursor = data.meta.next_cursor;
-		}
-		return games;
-	},
-
-	formatWinPct (wins, losses, ties) {
-		const total = wins + losses + ties;
-		if (total === 0) {
-			return ".000";
-		}
-		const pct = (wins + ties * 0.5) / total;
-		const display = pct.toFixed(3);
-		return display.startsWith("0") ? display.slice(1) : display;
-	},
-
-	titleCase (word) {
-		return word ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase() : "";
-	},
-
-	computeBalldontlieTeamRecords (teams, games) {
-		// balldontlie's /teams list includes defunct historical NBA franchises
-		// and unrelated international/exhibition clubs alongside the 30 real
-		// current teams - all of them with a blank (whitespace) conference,
-		// which is the only reliable way to filter them out.
-		const currentTeams = teams.filter((t) => (t.conference || "").trim());
-		const byId = new Map(currentTeams.map((t) => [t.id, {
-			id: t.id,
-			name: t.full_name || t.name || "",
-			abbreviation: t.abbreviation || "",
-			conference: t.conference || "",
-			division: this.titleCase(t.division || ""),
-			wins: 0,
-			losses: 0,
-			ties: 0
-		}]));
-
-		// Postseason games never count toward regular-season standings.
-		const finished = games.filter((g) => g.status_state === "final" && !g.postseason);
-		for (const game of finished) {
-			const home = byId.get(game.home_team?.id);
-			const away = byId.get(game.visitor_team?.id);
-			if (!home || !away) continue;
-			if (game.home_team_score > game.visitor_team_score) {
-				home.wins++;
-				away.losses++;
-			} else if (game.visitor_team_score > game.home_team_score) {
-				away.wins++;
-				home.losses++;
-			} else {
-				home.ties++;
-				away.ties++;
-			}
-		}
-		return [...byId.values()];
-	},
-
-	buildBalldontlieStandingsGroups (records, league, view) {
-		const groupKey = (r) => (view === "division" ? `${r.conference} ${r.division}` : r.conference);
-
-		const byGroup = new Map();
-		for (const record of records) {
-			const key = groupKey(record);
-			if (!byGroup.has(key)) byGroup.set(key, []);
-			byGroup.get(key).push(record);
-		}
-
-		const groups = [...byGroup.entries()].map(([name, groupRecords]) => {
-			const sorted = [...groupRecords].sort((a, b) => {
-				const aTotal = a.wins + a.losses + a.ties;
-				const bTotal = b.wins + b.losses + b.ties;
-				const aPct = aTotal ? (a.wins + a.ties * 0.5) / aTotal : 0;
-				const bPct = bTotal ? (b.wins + b.ties * 0.5) / bTotal : 0;
-				return bPct - aPct;
-			});
-			const leader = sorted[0];
-			const teams = sorted.map((r, index) => ({
-				seed: index + 1,
-				name: r.name,
-				abbreviation: r.abbreviation,
-				logo: r.abbreviation ? this.espnLogoUrl(league, r.abbreviation) : "",
-				record: r.ties > 0 ? `${r.wins}-${r.losses}-${r.ties}` : `${r.wins}-${r.losses}`,
-				stat: this.formatWinPct(r.wins, r.losses, r.ties),
-				gamesBehind: leader === r ? "-" : (((leader.wins - r.wins) + (r.losses - leader.losses)) / 2).toFixed(1)
-			}));
-			return { name, teams };
-		});
-
-		return groups;
-	},
-
-	async fetchBalldontlieStandings (league, apiKey, view) {
-		this.balldontlieStandingsCache = this.balldontlieStandingsCache || {};
-		const cached = this.balldontlieStandingsCache[league];
-		let records;
-		if (cached && Date.now() - cached.fetchedAt < BALLDONTLIE_STANDINGS_TTL_MS) {
-			records = cached.records;
-		} else {
-			const season = this.resolveBalldontlieSeason(league, new Date());
-			const [teams, games] = await Promise.all([
-				this.fetchBalldontlieTeamsLookup(league, apiKey),
-				this.fetchBalldontlieSeasonGames(league, apiKey, season)
-			]);
-			records = this.computeBalldontlieTeamRecords(teams, games);
-			this.balldontlieStandingsCache[league] = { records, fetchedAt: Date.now() };
-		}
-		return { isRankings: false, groups: this.buildBalldontlieStandingsGroups(records, league, view) };
 	},
 
 	// ---------------------------------------------------------------------
