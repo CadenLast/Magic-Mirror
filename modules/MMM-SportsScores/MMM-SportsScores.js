@@ -664,6 +664,7 @@ Module.register("MMM-SportsScores", {
 			view: this.standingsView,
 			espnProxy: this.config.espnProxy,
 			cfbdKey: this.config.cfbdKey,
+			balldontlieKeys: this.config.balldontlieKeys,
 			requestId: this.standingsRequestId
 		});
 	},
