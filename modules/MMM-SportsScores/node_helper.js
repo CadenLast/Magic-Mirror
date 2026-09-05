@@ -703,12 +703,26 @@ module.exports = NodeHelper.create({
 		// static logo CDN (an image host, not an API - no reliability concerns
 		// like the ones that ruled ESPN out for data) works from that.
 		const logoOverrides = COLLEGE_TEAM_LOGO_OVERRIDES[league] || {};
-		const lookup = new Map(teams.map((t) => {
+		const lookup = new Map();
+		for (const t of teams) {
 			const logo = logoOverrides[t.school] || (league === "college-football"
 				? (t.logos && t.logos[0]) || ""
 				: (t.sourceId ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${t.sourceId}.png` : ""));
-			return [t.school, { abbreviation: t.abbreviation || t.school, logo }];
-		}));
+			const entry = { abbreviation: t.abbreviation || t.school, logo };
+			// Sidearm RSS/Hawkeyes opponent names are often shortened (e.g.
+			// "Southeast Missouri" instead of CFBD's canonical "Southeast
+			// Missouri State"), which would otherwise miss this lookup entirely
+			// and fall back to the full name as its own "abbreviation". Football
+			// publishes exactly this kind of shortened name as alternateNames;
+			// basketball doesn't, but its displayName/shortDisplayName cover the
+			// same gap.
+			const keys = league === "college-football"
+				? [t.school, ...(t.alternateNames || [])]
+				: [t.school, t.displayName, t.shortDisplayName];
+			for (const key of keys) {
+				if (key) lookup.set(key, entry);
+			}
+		}
 
 		this.cfbdTeamsCache[league] = { lookup, fetchedAt: Date.now() };
 		return lookup;
