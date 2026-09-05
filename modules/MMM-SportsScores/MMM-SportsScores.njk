@@ -111,14 +111,14 @@
                   {% if showLogos and game.awayTeam.logo %}
                     <img class="scores-logo" src="{{ game.awayTeam.logo }}" alt="" />
                   {% endif %}
-                  <span class="scores-abbr">{% if game.awayTeam.rank %}<span class="scores-rank">{{ game.awayTeam.rank }}</span>{% endif %}{{ game.awayTeam.abbreviation }}</span>
+                  <span class="scores-abbr {{ 'scores-favorite' if game.awayTeam.isFavorite }}">{% if game.awayTeam.rank %}<span class="scores-rank">{{ game.awayTeam.rank }}</span>{% endif %}{{ game.awayTeam.abbreviation }}</span>
                   <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.awayTeam.score }}{% endif %}</span>
                 </div>
                 <div class="scores-team-row {{ 'scores-winner' if game.homeTeam.isWinner }}">
                   {% if showLogos and game.homeTeam.logo %}
                     <img class="scores-logo" src="{{ game.homeTeam.logo }}" alt="" />
                   {% endif %}
-                  <span class="scores-abbr">{% if game.homeTeam.rank %}<span class="scores-rank">{{ game.homeTeam.rank }}</span>{% endif %}{{ game.homeTeam.abbreviation }}</span>
+                  <span class="scores-abbr {{ 'scores-favorite' if game.homeTeam.isFavorite }}">{% if game.homeTeam.rank %}<span class="scores-rank">{{ game.homeTeam.rank }}</span>{% endif %}{{ game.homeTeam.abbreviation }}</span>
                   <span class="scores-score">{% if game.state == 'pre' %}&ndash;{% else %}{{ game.homeTeam.score }}{% endif %}</span>
                 </div>
               </div>
