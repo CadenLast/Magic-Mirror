@@ -909,23 +909,24 @@ module.exports = NodeHelper.create({
 	},
 
 	async parseHawkeyesEvent (sport, team, event, teamsLookup) {
-		// This site hasn't shown a completed or live game yet to confirm the
-		// exact status values for those (or any score fields) - confirmed by
-		// testing that TBD/unconfirmed future games report status as null
-		// rather than "as_scheduled", so anything not explicitly recognized as
-		// final defaults to "pre" rather than "in" (a live game briefly
-		// showing as not-yet-started is a smaller, less confusing error than
-		// a game weeks out showing as live).
-		const state = (event.status || "").toLowerCase().includes("final") ? "post" : "pre";
+		// Confirmed directly: a completed game reports status "completed" (not
+		// "final" as originally guessed before any game had actually finished)
+		// - TBD/unconfirmed future games report status as null rather than
+		// "as_scheduled", so anything not explicitly recognized as done still
+		// defaults to "pre" rather than "in" (a live game briefly showing as
+		// not-yet-started is a smaller, less confusing error than a game weeks
+		// out showing as live).
+		const state = ["completed", "final"].includes((event.status || "").toLowerCase()) ? "post" : "pre";
 		const isHome = event.venue_type === "home";
 		const opponentName = event.opponent_school_name || event.opponent_name || "TBD";
 
-		const [teamDisplay, opponentDisplay] = await Promise.all([
+		const [teamDisplay, opponentDisplay, finalScore] = await Promise.all([
 			this.resolveCollegeTeamDisplay(teamsLookup, team, ""),
-			this.resolveCollegeTeamDisplay(teamsLookup, opponentName, "")
+			this.resolveCollegeTeamDisplay(teamsLookup, opponentName, ""),
+			state === "post" ? this.fetchHawkeyesFinalScore(event.id, event.box_score_url) : null
 		]);
-		const teamSide = { name: team, ...teamDisplay, score: "0", rank: null };
-		const opponentSide = { name: opponentName, ...opponentDisplay, score: "0", rank: null };
+		const teamSide = { name: team, ...teamDisplay, score: String(finalScore?.teamScore ?? "0"), rank: null };
+		const opponentSide = { name: opponentName, ...opponentDisplay, score: String(finalScore?.opponentScore ?? "0"), rank: null };
 
 		return {
 			id: String(event.id || ""),
@@ -937,12 +938,62 @@ module.exports = NodeHelper.create({
 			homeTeam: isHome ? teamSide : opponentSide,
 			awayTeam: isHome ? opponentSide : teamSide,
 			state,
-			detail: event.status_text || (state === "pre" ? "Scheduled" : ""),
+			detail: event.status_text || (state === "post" ? "Final" : "Scheduled"),
 			eventDate: event.datetime || "",
 			situation: null,
 			favoriteIsHome: isHome,
 			favoriteIsAway: !isHome
 		};
+	},
+
+	// The schedule-events list (and even the single-event detail endpoint)
+	// never includes a score field, even for a completed game - the actual
+	// final score only exists inside the boxscore page's Nuxt SSR data
+	// payload, under a dynamically-keyed "schedule-event-post-event-page-{id}"
+	// entry -> event -> schedule_event_result -> result/winning_score/
+	// losing_score. This only follows that one fixed, verified chain of keys
+	// (never a generic deep-resolve of the whole payload), and is cached
+	// permanently per event id once found, since a final score never changes.
+	async fetchHawkeyesFinalScore (eventId, boxScoreUrl) {
+		this.hawkeyesResultCache = this.hawkeyesResultCache || {};
+		if (eventId in this.hawkeyesResultCache) {
+			return this.hawkeyesResultCache[eventId];
+		}
+
+		let result = null;
+		try {
+			const response = await fetch(boxScoreUrl, { headers: BROWSER_HEADERS });
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			const html = await response.text();
+			const match = html.match(/<script[^>]*id="__NUXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+			const data = match ? JSON.parse(match[1]) : null;
+
+			const pageKey = `schedule-event-post-event-page-${eventId}`;
+			const pageStateEntry = (data || []).find((item) => item && typeof item === "object" && !Array.isArray(item) && pageKey in item);
+			const pageState = pageStateEntry ? data[pageStateEntry[pageKey]] : null;
+			const eventObj = pageState ? data[pageState.event] : null;
+			const resultObj = eventObj?.schedule_event_result ? data[eventObj.schedule_event_result] : null;
+
+			if (resultObj) {
+				const outcome = data[resultObj.result];
+				const winningScore = Math.round(data[resultObj.winning_score]);
+				const losingScore = Math.round(data[resultObj.losing_score]);
+				if (outcome === "win") {
+					result = { teamScore: winningScore, opponentScore: losingScore };
+				} else if (outcome === "loss") {
+					result = { teamScore: losingScore, opponentScore: winningScore };
+				}
+				// Ties aren't mapped (winning/losing score labels don't apply) -
+				// result stays null, same as a parse failure: falls back to "0".
+			}
+		} catch (error) {
+			Log.warn(`${this.name}: Failed to fetch Hawkeyes final score for event ${eventId}: ${error.message}`);
+		}
+
+		this.hawkeyesResultCache[eventId] = result;
+		return result;
 	},
 
 	async fetchSidearmRssSchedule (sport, team, host, sportId, teamsLookup) {
