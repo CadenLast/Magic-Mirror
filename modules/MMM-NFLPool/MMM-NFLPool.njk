@@ -34,6 +34,9 @@
 {% endmacro %}
 
 <div class="pool-wrapper">
+  {% if retryStatus %}
+    <div class="pool-retry-banner">{{ retryStatus }}</div>
+  {% endif %}
   {% if not loaded %}
     <div class="dimmed small pool-empty">Loading pool standings&hellip;</div>
   {% elif hasGmail and not gmailConnected %}

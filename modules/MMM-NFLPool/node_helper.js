@@ -99,6 +99,7 @@ module.exports = NodeHelper.create({
 		this.cache = this.loadCache();
 		this.routesRegistered = false;
 		this.scanTimer = null;
+		this.retryStatus = null;
 	},
 
 	socketNotificationReceived (notification, payload) {
@@ -153,7 +154,8 @@ module.exports = NodeHelper.create({
 			parsedAt: cache.lastParsedAt,
 			sourceSubject: cache.lastProcessedSubject,
 			lastError: cache.lastError,
-			lastErrorAt: cache.lastErrorAt
+			lastErrorAt: cache.lastErrorAt,
+			retryStatus: this.retryStatus || null
 		});
 	},
 
@@ -465,18 +467,24 @@ module.exports = NodeHelper.create({
 	// still falls back to the slower per-scan retry counter in processEmailImage.
 	async callGeminiVisionWithRetry (imageBuffer, mimeType) {
 		const delaysMs = [5000, 15000];
+		const totalAttempts = delaysMs.length + 1;
 		let lastError;
-		for (let attempt = 1; attempt <= delaysMs.length + 1; attempt++) {
+		for (let attempt = 1; attempt <= totalAttempts; attempt++) {
 			try {
-				return await this.callGeminiVision(imageBuffer, mimeType);
+				const result = await this.callGeminiVision(imageBuffer, mimeType);
+				this.retryStatus = null;
+				return result;
 			} catch (error) {
 				lastError = error;
-				Log.warn(`${this.name}: Gemini attempt ${attempt}/${delaysMs.length + 1} failed: ${error.message}`);
-				if (attempt <= delaysMs.length) {
+				Log.warn(`${this.name}: Gemini attempt ${attempt}/${totalAttempts} failed: ${error.message}`);
+				if (attempt < totalAttempts) {
+					this.retryStatus = `Gemini error, retrying (attempt ${attempt + 1} of ${totalAttempts})…`;
+					this.sendPoolData();
 					await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt - 1]));
 				}
 			}
 		}
+		this.retryStatus = null;
 		throw lastError;
 	},
 

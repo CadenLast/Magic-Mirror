@@ -29,7 +29,8 @@ Module.register("MMM-NFLPool", {
 			parsedAt: null,
 			sourceSubject: null,
 			lastError: null,
-			lastErrorAt: null
+			lastErrorAt: null,
+			retryStatus: null
 		};
 		this.loaded = false;
 		this.gmailConnected = !this.config.gmail;
@@ -72,7 +73,8 @@ Module.register("MMM-NFLPool", {
 			currentOther,
 			rank: this.poolData.rank,
 			ofCount: this.poolData.ofCount,
-			lastError: this.poolData.lastError
+			lastError: this.poolData.lastError,
+			retryStatus: this.poolData.retryStatus
 		};
 	},
 
