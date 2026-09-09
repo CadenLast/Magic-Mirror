@@ -2,7 +2,7 @@ Module.register("MMM-NFLPool", {
 	defaults: {
 		gmail: null,
 		geminiKey: null,
-		geminiModel: "gemini-2.5-flash",
+		geminiModel: "gemini-3.6-flash",
 		senderEmail: "bcimorelli@gmail.com",
 		userName: "Caden",
 		refreshInterval: 30 * 60 * 1000,

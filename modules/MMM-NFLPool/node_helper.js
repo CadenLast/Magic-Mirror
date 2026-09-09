@@ -439,7 +439,7 @@ module.exports = NodeHelper.create({
 	},
 
 	async callGeminiVision (imageBuffer, mimeType) {
-		const model = this.config.geminiModel || "gemini-2.5-flash";
+		const model = this.config.geminiModel || "gemini-3.6-flash";
 		const response = await fetch(`${GEMINI_API_BASE}/${model}:generateContent`, {
 			method: "POST",
 			headers: {
