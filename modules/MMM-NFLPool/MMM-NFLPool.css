@@ -1,5 +1,5 @@
 .MMM-NFLPool {
-  width: 470px;
+  width: 430px;
   align-self: flex-end;
 }
 
@@ -12,6 +12,9 @@
 .pool-wrapper {
   display: flex;
   flex-direction: column;
+  /* top_right is right-aligned by default in MagicMirror's base CSS -
+     override it so titles/names/picks read left-to-right normally. */
+  text-align: left;
 }
 
 .pool-retry-banner {
@@ -95,7 +98,8 @@
 }
 
 .pool-header-row .pool-rank,
-.pool-header-row .pool-name {
+.pool-header-row .pool-name,
+.pool-header-row .pool-picks {
   text-align: left;
 }
 
@@ -123,8 +127,8 @@
 }
 
 .pool-picks {
-  max-width: 230px;
-  text-align: right;
+  max-width: 210px;
+  text-align: left;
   opacity: 0.85;
 }
 
