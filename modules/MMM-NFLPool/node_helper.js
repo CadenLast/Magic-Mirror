@@ -423,7 +423,7 @@ module.exports = NodeHelper.create({
 			}
 
 			const mimeType = /^image\/(png|jpeg|gif|webp)$/.test(imagePart.mimeType) ? imagePart.mimeType : "image/png";
-			const result = await this.callGeminiVision(imageBuffer, mimeType);
+			const result = await this.callGeminiVisionWithRetry(imageBuffer, mimeType);
 
 			const { weekLabel, week } = this.resolveWeek(meta.subject, result.weekLabel);
 			const userName = this.config.userName || "Caden";
@@ -457,6 +457,27 @@ module.exports = NodeHelper.create({
 			this.saveCache();
 			Log.error(`${this.name}: Failed to parse pool email:`, error.message);
 		}
+	},
+
+	// Quick retries for transient failures (e.g. Gemini's "high demand" 503s
+	// seen in practice) so a blip that resolves within seconds doesn't have to
+	// wait for the next 4-hour scheduled scan to try again. Exhausting these
+	// still falls back to the slower per-scan retry counter in processEmailImage.
+	async callGeminiVisionWithRetry (imageBuffer, mimeType) {
+		const delaysMs = [5000, 15000];
+		let lastError;
+		for (let attempt = 1; attempt <= delaysMs.length + 1; attempt++) {
+			try {
+				return await this.callGeminiVision(imageBuffer, mimeType);
+			} catch (error) {
+				lastError = error;
+				Log.warn(`${this.name}: Gemini attempt ${attempt}/${delaysMs.length + 1} failed: ${error.message}`);
+				if (attempt <= delaysMs.length) {
+					await new Promise((resolve) => setTimeout(resolve, delaysMs[attempt - 1]));
+				}
+			}
+		}
+		throw lastError;
 	},
 
 	async callGeminiVision (imageBuffer, mimeType) {
