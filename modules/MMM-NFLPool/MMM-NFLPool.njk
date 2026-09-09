@@ -1,15 +1,32 @@
 {% macro divisionTable(div) %}
   <table class="pool-table">
+    <thead>
+      <tr class="pool-header-row">
+        <th class="pool-seed"></th>
+        <th class="pool-name"></th>
+        <th class="pool-num">Tot</th>
+        <th class="pool-num">Proj</th>
+        <th class="pool-num">Diff</th>
+        <th class="pool-num">R3</th>
+        <th class="pool-num">R3&Delta;</th>
+        <th class="pool-picks">Picks</th>
+      </tr>
+    </thead>
     <tbody>
       {% for row in div.rows %}
         <tr class="pool-row {% if row.isUser %}pool-row-user{% endif %}">
           <td class="pool-seed">{{ row.seed }}</td>
           <td class="pool-name">{{ row.name }}</td>
           <td class="pool-num {{ row.totalClass }}">{{ row.total }}</td>
+          <td class="pool-num {{ row.projectedTotalClass }}">{{ row.projectedTotal }}</td>
           <td class="pool-num {{ row.diffClass }}">{{ row.diff }}</td>
           <td class="pool-num">{{ row.r3 }}</td>
           <td class="pool-num {{ row.r3DiffClass }}">{{ row.r3Diff }}</td>
-          <td class="pool-picks">{{ row.pickDisplay1 }} / {{ row.pickDisplay2 }}</td>
+          <td class="pool-picks">
+            <span class="pool-pick pool-pick-{{ row.pick1Status }}">{{ row.pickDisplay1 }}{% if row.pick1DoubleDown %}<sup class="pool-dd">2x</sup>{% endif %}</span>
+            /
+            <span class="pool-pick pool-pick-{{ row.pick2Status }}">{{ row.pickDisplay2 }}{% if row.pick2DoubleDown %}<sup class="pool-dd">2x</sup>{% endif %}</span>
+          </td>
         </tr>
       {% endfor %}
     </tbody>

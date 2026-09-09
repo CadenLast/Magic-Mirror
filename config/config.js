@@ -128,6 +128,7 @@ let config = {
 					clientSecret: "${GMAIL_CLIENT_SECRET}",
 				},
 				geminiKey: keys.gemini,
+				balldontlieKey: keys.balldontlie.nfl,
 				userName: "Caden",
 				refreshInterval: 30 * 60 * 1000,
 				emailScanInterval: 4 * 60 * 60 * 1000

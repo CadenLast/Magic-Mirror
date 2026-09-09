@@ -22,7 +22,7 @@ const WORD_NUMBERS = {
 
 const POOL_SCHEMA = {
 	type: "OBJECT",
-	required: ["weekLabel", "divisions"],
+	required: ["weekLabel", "divisions", "games"],
 	properties: {
 		weekLabel: {
 			type: "STRING",
@@ -56,6 +56,22 @@ const POOL_SCHEMA = {
 					}
 				}
 			}
+		},
+		games: {
+			type: "ARRAY",
+			description: "Every game in the second table (the per-game points table), in any order.",
+			items: {
+				type: "OBJECT",
+				required: ["awayTeam", "awayGain", "awayLoss", "homeTeam", "homeGain", "homeLoss"],
+				properties: {
+					awayTeam: { type: "STRING" },
+					awayGain: { type: "INTEGER" },
+					awayLoss: { type: "INTEGER" },
+					homeTeam: { type: "STRING" },
+					homeGain: { type: "INTEGER" },
+					homeLoss: { type: "INTEGER" }
+				}
+			}
 		}
 	}
 };
@@ -71,7 +87,9 @@ const USER_PROMPT = [
 	"",
 	"For the two Pick columns, transcribe the team name exactly as written (or \"-bye-\" literally if that's what's shown). Occasionally there is a small extra value in or immediately before a pick cell (e.g. a lone number like \"1\") - capture that in the matching pick1Extra/pick2Extra field as a string, and use an empty string when there is no such extra value.",
 	"",
-	"Extract every row in every one of the 8 division sections - do not omit any player, and do not merge or reorder rows. If the image shows a week or round label (e.g. \"Week 13\" or \"Wild Card\"), put it in weekLabel; otherwise leave weekLabel as an empty string."
+	"Extract every row in every one of the 8 division sections - do not omit any player, and do not merge or reorder rows. If the image shows a week or round label (e.g. \"Week 13\" or \"Wild Card\"), put it in weekLabel; otherwise leave weekLabel as an empty string.",
+	"",
+	"Below the standings table there is a second table listing every NFL game for the week, grouped under day/time section headers like \"THURSDAY NIGHT\", \"SUNDAY EARLY\", \"SUNDAY LATE\", \"SUNDAY NIGHT\", \"MONDAY NIGHT\". Each game shows an away team, then \"at\", then a home team. Each team has two small numbers next to its name: the first is the number of points GAINED if that team is picked and wins, the second is a negative number of points LOST if picked and it loses. Each team also has a separate larger bold number and sometimes a small star - ignore both of those, they are not needed. Extract every game into the games array as awayTeam/awayGain/awayLoss/homeTeam/homeGain/homeLoss, using the exact team name spelling shown (it should match the same spelling used for that team in the Pick columns above)."
 ].join("\n");
 
 module.exports = NodeHelper.create({
@@ -105,6 +123,7 @@ module.exports = NodeHelper.create({
 				this.sendSocketNotification("GMAIL_STATUS", { connected: true });
 				await this.scanGmail();
 				this.scheduleScan();
+				await this.recomputeProjections();
 			} else {
 				this.sendSocketNotification("GMAIL_STATUS", { connected: false });
 			}
@@ -408,20 +427,22 @@ module.exports = NodeHelper.create({
 
 			const { weekLabel, week } = this.resolveWeek(meta.subject, result.weekLabel);
 			const userName = this.config.userName || "Caden";
-			const divisions = this.annotateRows(result.divisions || [], userName);
-			const { homeDivisionName, rank, ofCount } = this.computeHomeStanding(divisions);
+			const games = result.games || [];
+			const rawDivisions = this.annotateRows(result.divisions || [], userName);
 
 			this.cache.lastProcessedMessageId = meta.id;
 			this.cache.lastProcessedSubject = meta.subject;
 			this.cache.week = week;
 			this.cache.weekLabel = weekLabel;
 			this.cache.lastParsedAt = new Date().toISOString();
-			this.cache.data = { divisions, homeDivisionName, rank, ofCount };
+			this.cache.data = { divisions: rawDivisions, games, homeDivisionName: null, rank: null, ofCount: null };
 			this.cache.lastError = null;
 			this.cache.lastErrorAt = null;
 			this.cache.lastFailedMessageId = null;
 			this.cache.failCount = 0;
 			this.saveCache();
+
+			await this.recomputeProjections();
 
 			Log.info(`${this.name}: Parsed pool standings for ${weekLabel || meta.subject}`);
 		} catch (error) {
@@ -479,7 +500,7 @@ module.exports = NodeHelper.create({
 			throw new Error("Gemini returned invalid JSON");
 		}
 
-		if (!Array.isArray(parsed.divisions)) {
+		if (!Array.isArray(parsed.divisions) || !Array.isArray(parsed.games)) {
 			throw new Error("Gemini did not return valid pool standings data");
 		}
 
@@ -520,6 +541,7 @@ module.exports = NodeHelper.create({
 			const trimmed = (extra || "").trim();
 			return trimmed !== "" && trimmed !== "-";
 		};
+		const isDoubleDown = (pick) => !!pick && pick !== "-bye-" && pick === pick.toUpperCase() && pick !== pick.toLowerCase();
 		return divisions.map((div) => ({
 			name: div.name,
 			rows: (div.rows || []).map((row) => ({
@@ -532,6 +554,10 @@ module.exports = NodeHelper.create({
 				r3: row.r3,
 				r3Diff: row.r3Diff,
 				r3DiffClass: row.r3Diff < 0 ? "pool-negative" : "pool-positive",
+				pick1Team: row.pick1 || "",
+				pick2Team: row.pick2 || "",
+				pick1DoubleDown: isDoubleDown(row.pick1),
+				pick2DoubleDown: isDoubleDown(row.pick2),
 				pickDisplay1: hasExtra(row.pick1Extra) ? `${row.pick1Extra.trim()} ${row.pick1}` : (row.pick1 || ""),
 				pickDisplay2: hasExtra(row.pick2Extra) ? `${row.pick2Extra.trim()} ${row.pick2}` : (row.pick2 || ""),
 				isUser: !!(row.name && row.name.toLowerCase().includes(nameLower))
@@ -539,11 +565,143 @@ module.exports = NodeHelper.create({
 		}));
 	},
 
+	// --- Live Scores & Projections ---
+
+	async fetchLiveGames () {
+		const key = this.config?.balldontlieKey;
+		if (!key) return [];
+
+		const dates = [];
+		for (let offset = -4; offset <= 3; offset++) {
+			const d = new Date();
+			d.setDate(d.getDate() + offset);
+			dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
+		}
+
+		const params = dates.map((d) => `dates[]=${d}`).join("&");
+		const resp = await fetch(`https://api.balldontlie.io/nfl/v1/games?${params}`, {
+			headers: { Authorization: key }
+		});
+		if (!resp.ok) {
+			Log.error(`${this.name}: balldontlie games fetch failed: ${resp.status}`);
+			return [];
+		}
+
+		const data = await resp.json();
+		return (data.data || []).map((game) => ({
+			awayTeam: game.visitor_team?.full_name || "",
+			homeTeam: game.home_team?.full_name || "",
+			awayScore: game.visitor_team_score,
+			homeScore: game.home_team_score,
+			state: game.status_state === "scheduled" ? "pre" : (game.status_state === "final" ? "post" : "in")
+		}));
+	},
+
+	matchLiveGame (teamName, liveGames) {
+		if (!teamName) return null;
+		const lower = teamName.toLowerCase();
+		return liveGames.find((g) => g.awayTeam.toLowerCase().includes(lower) || g.homeTeam.toLowerCase().includes(lower)) || null;
+	},
+
+	findGameEntry (teamName, games) {
+		if (!teamName) return null;
+		const lower = teamName.toLowerCase();
+		for (const game of games) {
+			if (game.awayTeam.toLowerCase() === lower) return { gain: game.awayGain, loss: game.awayLoss };
+			if (game.homeTeam.toLowerCase() === lower) return { gain: game.homeGain, loss: game.homeLoss };
+		}
+		return null;
+	},
+
+	computePickOutcome (teamName, games, liveGames) {
+		if (!teamName || teamName === "-bye-") return { swing: 0, status: "bye" };
+
+		const entry = this.findGameEntry(teamName, games);
+		if (!entry) return { swing: 0, status: "pending" };
+
+		const live = this.matchLiveGame(teamName, liveGames);
+		if (!live || live.state === "pre" || live.awayScore === null || live.homeScore === null) {
+			return { swing: 0, status: "pending" };
+		}
+
+		if (live.awayScore === live.homeScore) return { swing: 0, status: "tied" };
+
+		const teamLower = teamName.toLowerCase();
+		const isAway = live.awayTeam.toLowerCase().includes(teamLower);
+		const teamScore = isAway ? live.awayScore : live.homeScore;
+		const oppScore = isAway ? live.homeScore : live.awayScore;
+		const isLeading = teamScore > oppScore;
+		const swing = isLeading ? entry.gain : entry.loss;
+		const status = live.state === "post" ? (isLeading ? "won" : "lost") : (isLeading ? "winning" : "losing");
+
+		return { swing, status };
+	},
+
+	computeProjections (divisions, games, liveGames) {
+		const projected = divisions.map((div) => ({
+			...div,
+			rows: div.rows.map((row) => {
+				const outcome1 = this.computePickOutcome(row.pick1Team, games, liveGames);
+				const outcome2 = this.computePickOutcome(row.pick2Team, games, liveGames);
+				const swing1 = row.pick1DoubleDown ? outcome1.swing * 2 : outcome1.swing;
+				const swing2 = row.pick2DoubleDown ? outcome2.swing * 2 : outcome2.swing;
+				const projectedTotal = row.total + swing1 + swing2;
+
+				return {
+					...row,
+					pick1Status: outcome1.status,
+					pick2Status: outcome2.status,
+					projectedTotal,
+					projectedTotalClass: projectedTotal < 0 ? "pool-negative" : "pool-positive"
+				};
+			})
+		}));
+
+		const allGamesFinal = games.length > 0 && games.every((game) => {
+			const live = this.matchLiveGame(game.awayTeam, liveGames) || this.matchLiveGame(game.homeTeam, liveGames);
+			return live?.state === "post";
+		});
+
+		return { projected, allGamesFinal };
+	},
+
+	// Idempotent: safe to call after a fresh parse, on process restart with
+	// existing cached data, or from the recurring timer tick. Recomputes
+	// projections from this.cache.data (divisions + games), then starts the
+	// polling timer if any games are still undecided, or stops it once every
+	// game is final.
+	async recomputeProjections () {
+		if (!this.cache.data?.divisions || !this.cache.data?.games) return;
+
+		try {
+			const liveGames = await this.fetchLiveGames();
+			const { projected, allGamesFinal } = this.computeProjections(this.cache.data.divisions, this.cache.data.games, liveGames);
+			const { homeDivisionName, rank, ofCount } = this.computeHomeStanding(projected);
+
+			this.cache.data.divisions = projected;
+			this.cache.data.homeDivisionName = homeDivisionName;
+			this.cache.data.rank = rank;
+			this.cache.data.ofCount = ofCount;
+			this.saveCache();
+			this.sendPoolData();
+
+			if (allGamesFinal) {
+				if (this.liveScoreTimer) clearInterval(this.liveScoreTimer);
+				this.liveScoreTimer = null;
+			} else if (!this.liveScoreTimer) {
+				const interval = this.config?.liveScoreInterval || 2 * 60 * 1000;
+				this.liveScoreTimer = setInterval(() => this.recomputeProjections(), interval);
+			}
+		} catch (error) {
+			Log.error(`${this.name}: Live score refresh error:`, error.message);
+		}
+	},
+
 	computeHomeStanding (divisions) {
 		for (const div of divisions) {
 			const idx = div.rows.findIndex((r) => r.isUser);
 			if (idx === -1) continue;
-			const sorted = [...div.rows].sort((a, b) => b.total - a.total);
+			const sorted = [...div.rows].sort((a, b) => b.projectedTotal - a.projectedTotal);
 			const rank = sorted.findIndex((r) => r.isUser) + 1;
 			return { homeDivisionName: div.name, rank, ofCount: div.rows.length };
 		}

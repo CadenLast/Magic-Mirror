@@ -3,10 +3,12 @@ Module.register("MMM-NFLPool", {
 		gmail: null,
 		geminiKey: null,
 		geminiModel: "gemini-3.6-flash",
+		balldontlieKey: null,
 		senderEmail: "bcimorelli@gmail.com",
 		userName: "Caden",
 		refreshInterval: 30 * 60 * 1000,
 		emailScanInterval: 4 * 60 * 60 * 1000,
+		liveScoreInterval: 2 * 60 * 1000,
 		otherDivisionsRotateInterval: 12 * 1000,
 		animationSpeed: 500
 	},
@@ -37,11 +39,13 @@ Module.register("MMM-NFLPool", {
 			gmail: this.config.gmail,
 			geminiKey: this.config.geminiKey,
 			geminiModel: this.config.geminiModel,
+			balldontlieKey: this.config.balldontlieKey,
 			senderEmail: this.config.senderEmail,
 			userName: this.config.userName,
 			address: config.address,
 			port: config.port,
-			emailScanInterval: this.config.emailScanInterval
+			emailScanInterval: this.config.emailScanInterval,
+			liveScoreInterval: this.config.liveScoreInterval
 		});
 
 		this.scheduleRefresh();

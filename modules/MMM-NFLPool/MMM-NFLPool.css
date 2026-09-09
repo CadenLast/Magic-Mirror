@@ -1,5 +1,5 @@
 .MMM-NFLPool {
-  width: 430px;
+  width: 470px;
   align-self: flex-end;
 }
 
@@ -58,18 +58,31 @@
   text-overflow: ellipsis;
 }
 
+.pool-header-row th {
+  padding: 0 6px 2px;
+  font-size: 0.85em;
+  font-weight: 400;
+  text-align: right;
+  opacity: 0.5;
+}
+
+.pool-header-row .pool-seed,
+.pool-header-row .pool-name {
+  text-align: left;
+}
+
 .pool-seed {
   width: 24px;
   opacity: 0.6;
 }
 
 .pool-name {
-  max-width: 90px;
+  max-width: 80px;
 }
 
 .pool-num {
   text-align: right;
-  width: 34px;
+  width: 30px;
 }
 
 .pool-positive {
@@ -81,9 +94,33 @@
 }
 
 .pool-picks {
-  max-width: 140px;
+  max-width: 150px;
   text-align: right;
   opacity: 0.85;
+}
+
+.pool-pick-won,
+.pool-pick-winning {
+  color: #2ecc71;
+  opacity: 1;
+}
+
+.pool-pick-lost,
+.pool-pick-losing {
+  color: #e74c3c;
+  opacity: 1;
+}
+
+.pool-pick-pending,
+.pool-pick-bye,
+.pool-pick-tied {
+  opacity: 0.6;
+}
+
+.pool-dd {
+  color: #f39c12;
+  font-size: 0.85em;
+  margin-left: 1px;
 }
 
 .pool-empty {
