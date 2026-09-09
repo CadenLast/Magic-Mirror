@@ -313,7 +313,10 @@ module.exports = NodeHelper.create({
 			if (!accessToken) return;
 
 			const senderEmail = this.config.senderEmail || "bcimorelli@gmail.com";
-			const query = `from:${senderEmail} subject:"NFL Pool"`;
+			// newer_than guards against ever matching a stale "Picks and Preview"
+			// email left over from a prior season if this season hasn't sent one
+			// yet - confirmed live that this can otherwise happen.
+			const query = `from:${senderEmail} subject:"NFL Pool" subject:preview newer_than:14d`;
 			const listResp = await fetch(`${GMAIL_API}/messages?q=${encodeURIComponent(query)}&maxResults=10`, {
 				headers: { Authorization: `Bearer ${accessToken}` }
 			});
