@@ -50,15 +50,18 @@
   {% else %}
     <div class="pool-header">{{ weekLabel or "NFL Pool" }}</div>
     {% if homeDivision %}
-      <div class="pool-division-name">
-        Your Division &middot; {{ homeDivision.name }}
-        {% if rank %}<span class="pool-home-badge">rank {{ rank }} of {{ ofCount }}</span>{% endif %}
+      <div class="pool-division pool-division-home">
+        <div class="pool-division-name">{{ homeDivision.displayName }}</div>
+        {{ divisionTable(homeDivision) }}
       </div>
-      {{ divisionTable(homeDivision) }}
     {% endif %}
-    {% if currentOther %}
-      <div class="pool-division-name">{{ currentOther.name }}</div>
-      {{ divisionTable(currentOther) }}
-    {% endif %}
+    <div class="pool-others-list">
+      {% for div in otherDivisions %}
+        <div class="pool-division">
+          <div class="pool-division-name">{{ div.displayName }}</div>
+          {{ divisionTable(div) }}
+        </div>
+      {% endfor %}
+    </div>
   {% endif %}
 </div>

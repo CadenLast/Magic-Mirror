@@ -9,7 +9,6 @@ Module.register("MMM-NFLPool", {
 		refreshInterval: 30 * 60 * 1000,
 		emailScanInterval: 4 * 60 * 60 * 1000,
 		liveScoreInterval: 2 * 60 * 1000,
-		otherDivisionsRotateInterval: 12 * 1000,
 		animationSpeed: 500
 	},
 
@@ -34,7 +33,6 @@ Module.register("MMM-NFLPool", {
 		};
 		this.loaded = false;
 		this.gmailConnected = !this.config.gmail;
-		this.otherIndex = 0;
 
 		this.sendSocketNotification("INIT_POOL", {
 			gmail: this.config.gmail,
@@ -50,18 +48,20 @@ Module.register("MMM-NFLPool", {
 		});
 
 		this.scheduleRefresh();
-		this.scheduleRotate();
 	},
 
 	getTemplate () {
 		return "MMM-NFLPool.njk";
 	},
 
+	formatDivisionName (name) {
+		return name.replace(/^(NFC|AFC)/, "$1 ");
+	},
+
 	getTemplateData () {
-		const divisions = this.poolData.divisions || [];
+		const divisions = (this.poolData.divisions || []).map((d) => ({ ...d, displayName: this.formatDivisionName(d.name) }));
 		const homeDivision = divisions.find((d) => d.name === this.poolData.homeDivisionName) || null;
-		const others = divisions.filter((d) => d.name !== this.poolData.homeDivisionName);
-		const currentOther = others.length > 0 ? others[this.otherIndex % others.length] : null;
+		const otherDivisions = divisions.filter((d) => d.name !== this.poolData.homeDivisionName);
 
 		return {
 			loaded: this.loaded,
@@ -70,9 +70,7 @@ Module.register("MMM-NFLPool", {
 			weekLabel: this.poolData.weekLabel,
 			divisions,
 			homeDivision,
-			currentOther,
-			rank: this.poolData.rank,
-			ofCount: this.poolData.ofCount,
+			otherDivisions,
 			lastError: this.poolData.lastError,
 			retryStatus: this.poolData.retryStatus
 		};
@@ -82,13 +80,6 @@ Module.register("MMM-NFLPool", {
 		setInterval(() => {
 			this.sendSocketNotification("FETCH_POOL", {});
 		}, this.config.refreshInterval);
-	},
-
-	scheduleRotate () {
-		setInterval(() => {
-			this.otherIndex += 1;
-			this.updateDom(this.config.animationSpeed);
-		}, this.config.otherDivisionsRotateInterval);
 	},
 
 	socketNotificationReceived (notification, payload) {

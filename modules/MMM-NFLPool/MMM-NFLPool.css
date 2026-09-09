@@ -3,10 +3,10 @@
   align-self: flex-end;
 }
 
-/* Reserve height so the layout doesn't shift while loading (home division +
-   one rotating division, ~5 rows each). */
+/* Reserve height so the layout doesn't shift while loading (home division
+   pinned above a scrollable list of the other 7). */
 .MMM-NFLPool .module-content {
-  min-height: 440px;
+  min-height: 460px;
 }
 
 .pool-wrapper {
@@ -27,20 +27,41 @@
   margin-bottom: 8px;
 }
 
+.pool-division {
+  margin-bottom: 14px;
+}
+
+.pool-division-home {
+  background: rgba(52, 152, 219, 0.12);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
 .pool-division-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-size: 0.8em;
   color: var(--color-text);
   opacity: 0.8;
-  margin: 10px 0 4px;
+  margin: 0 0 4px;
 }
 
-.pool-home-badge {
-  font-size: 0.85em;
+.pool-division-home .pool-division-name {
   color: #3498db;
   opacity: 1;
+  font-weight: 600;
+}
+
+.pool-others-list {
+  max-height: 280px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.pool-others-list::-webkit-scrollbar {
+  display: none;
+}
+
+.pool-others-list .pool-division:last-child {
+  margin-bottom: 0;
 }
 
 .pool-table {
