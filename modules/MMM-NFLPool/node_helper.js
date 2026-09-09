@@ -723,7 +723,11 @@ module.exports = NodeHelper.create({
 
 	// Ranks 1..N within each conference (NFC/AFC) by projectedTotal, pooling
 	// all 4 divisions per conference together - not just within one division.
+	// Top 7 (the real NFL playoff field size) display as a live seed 1-7;
+	// everyone else displays as "+N", how many spots past the last wildcard
+	// spot they currently are.
 	computeConferenceRanks (divisions) {
+		const PLAYOFF_SPOTS = 7;
 		const conferences = { NFC: [], AFC: [] };
 		for (const div of divisions) {
 			const conf = div.name.startsWith("NFC") ? "NFC" : "AFC";
@@ -734,6 +738,7 @@ module.exports = NodeHelper.create({
 				.sort((a, b) => b.projectedTotal - a.projectedTotal)
 				.forEach((row, idx) => {
 					row.confRank = idx + 1;
+					row.seedDisplay = row.confRank <= PLAYOFF_SPOTS ? String(row.confRank) : `+${row.confRank - PLAYOFF_SPOTS}`;
 				});
 		}
 	},
