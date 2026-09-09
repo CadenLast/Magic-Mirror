@@ -516,6 +516,10 @@ module.exports = NodeHelper.create({
 
 	annotateRows (divisions, userName) {
 		const nameLower = userName.trim().toLowerCase();
+		const hasExtra = (extra) => {
+			const trimmed = (extra || "").trim();
+			return trimmed !== "" && trimmed !== "-";
+		};
 		return divisions.map((div) => ({
 			name: div.name,
 			rows: (div.rows || []).map((row) => ({
@@ -528,8 +532,8 @@ module.exports = NodeHelper.create({
 				r3: row.r3,
 				r3Diff: row.r3Diff,
 				r3DiffClass: row.r3Diff < 0 ? "pool-negative" : "pool-positive",
-				pickDisplay1: row.pick1Extra ? `${row.pick1Extra} ${row.pick1}` : (row.pick1 || ""),
-				pickDisplay2: row.pick2Extra ? `${row.pick2Extra} ${row.pick2}` : (row.pick2 || ""),
+				pickDisplay1: hasExtra(row.pick1Extra) ? `${row.pick1Extra.trim()} ${row.pick1}` : (row.pick1 || ""),
+				pickDisplay2: hasExtra(row.pick2Extra) ? `${row.pick2Extra.trim()} ${row.pick2}` : (row.pick2 || ""),
 				isUser: !!(row.name && row.name.toLowerCase().includes(nameLower))
 			}))
 		}));
