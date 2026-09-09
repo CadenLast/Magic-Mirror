@@ -686,7 +686,10 @@ module.exports = NodeHelper.create({
 			})
 		}));
 
-		const allGamesFinal = games.length > 0 && games.every((game) => {
+		// Vacuously true for an empty games list (e.g. a season-announcement
+		// email with no games table yet) - nothing to poll for, so don't start
+		// the live-score timer until a week with real games actually parses.
+		const allGamesFinal = games.every((game) => {
 			const live = this.matchLiveGame(game.awayTeam, liveGames) || this.matchLiveGame(game.homeTeam, liveGames);
 			return live?.state === "post";
 		});
