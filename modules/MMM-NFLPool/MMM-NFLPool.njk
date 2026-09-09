@@ -12,7 +12,7 @@
     <tbody>
       {% for row in div.rows %}
         <tr class="pool-row {% if row.isUser %}pool-row-user{% endif %}">
-          <td class="pool-rank">{{ row.confRank }}</td>
+          <td class="pool-rank">{{ row.seedDisplay }}</td>
           <td class="pool-name">{{ row.name }}</td>
           <td class="pool-num {{ row.totalClass }}">{{ row.total }}</td>
           <td class="pool-picks">
