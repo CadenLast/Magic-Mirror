@@ -646,17 +646,17 @@ module.exports = NodeHelper.create({
 	},
 
 	computePickOutcome (teamName, games, liveGames) {
-		if (!teamName || teamName === "-bye-") return { swing: 0, status: "bye" };
+		if (!teamName || teamName === "-bye-") return { swing: 0, status: "bye", gain: null, loss: null };
 
 		const entry = this.findGameEntry(teamName, games);
-		if (!entry) return { swing: 0, status: "pending" };
+		if (!entry) return { swing: 0, status: "pending", gain: null, loss: null };
 
 		const live = this.matchLiveGame(teamName, liveGames);
 		if (!live || live.state === "pre" || live.awayScore === null || live.homeScore === null) {
-			return { swing: 0, status: "pending" };
+			return { swing: 0, status: "pending", gain: entry.gain, loss: entry.loss };
 		}
 
-		if (live.awayScore === live.homeScore) return { swing: 0, status: "tied" };
+		if (live.awayScore === live.homeScore) return { swing: 0, status: "tied", gain: entry.gain, loss: entry.loss };
 
 		const teamLower = teamName.toLowerCase();
 		const isAway = live.awayTeam.toLowerCase().includes(teamLower);
@@ -666,28 +666,49 @@ module.exports = NodeHelper.create({
 		const swing = isLeading ? entry.gain : entry.loss;
 		const status = live.state === "post" ? (isLeading ? "won" : "lost") : (isLeading ? "winning" : "losing");
 
-		return { swing, status };
+		return { swing, status, gain: entry.gain, loss: entry.loss };
+	},
+
+	// Pending: show both possible outcomes ("+4/-2"). Decided (live-leading or
+	// final), tied, or bye: show just the one actual/current value.
+	formatPickPoints (outcome, multiplier) {
+		if (outcome.status === "bye") return "";
+		if (outcome.status === "pending") {
+			if (outcome.gain === null) return "";
+			return `+${outcome.gain * multiplier}/${outcome.loss * multiplier}`;
+		}
+		if (outcome.status === "tied") return "0";
+		const swing = outcome.swing * multiplier;
+		return swing >= 0 ? `+${swing}` : `${swing}`;
 	},
 
 	computeProjections (divisions, games, liveGames) {
 		const projected = divisions.map((div) => ({
 			...div,
-			rows: div.rows.map((row) => {
-				const outcome1 = this.computePickOutcome(row.pick1Team, games, liveGames);
-				const outcome2 = this.computePickOutcome(row.pick2Team, games, liveGames);
-				const swing1 = row.pick1DoubleDown ? outcome1.swing * 2 : outcome1.swing;
-				const swing2 = row.pick2DoubleDown ? outcome2.swing * 2 : outcome2.swing;
-				const projectedTotal = row.total + swing1 + swing2;
+			rows: div.rows
+				.map((row) => {
+					const outcome1 = this.computePickOutcome(row.pick1Team, games, liveGames);
+					const outcome2 = this.computePickOutcome(row.pick2Team, games, liveGames);
+					const mult1 = row.pick1DoubleDown ? 2 : 1;
+					const mult2 = row.pick2DoubleDown ? 2 : 1;
+					const swing1 = outcome1.swing * mult1;
+					const swing2 = outcome2.swing * mult2;
+					const projectedTotal = row.total + swing1 + swing2;
 
-				return {
-					...row,
-					pick1Status: outcome1.status,
-					pick2Status: outcome2.status,
-					projectedTotal,
-					projectedTotalClass: projectedTotal < 0 ? "pool-negative" : "pool-positive"
-				};
-			})
+					return {
+						...row,
+						pick1Status: outcome1.status,
+						pick2Status: outcome2.status,
+						pickPoints1: this.formatPickPoints(outcome1, mult1),
+						pickPoints2: this.formatPickPoints(outcome2, mult2),
+						projectedTotal,
+						projectedTotalClass: projectedTotal < 0 ? "pool-negative" : "pool-positive"
+					};
+				})
+				.sort((a, b) => b.projectedTotal - a.projectedTotal)
 		}));
+
+		this.computeConferenceRanks(projected);
 
 		// Vacuously true for an empty games list (e.g. a season-announcement
 		// email with no games table yet) - nothing to poll for, so don't start
@@ -698,6 +719,23 @@ module.exports = NodeHelper.create({
 		});
 
 		return { projected, allGamesFinal };
+	},
+
+	// Ranks 1..N within each conference (NFC/AFC) by projectedTotal, pooling
+	// all 4 divisions per conference together - not just within one division.
+	computeConferenceRanks (divisions) {
+		const conferences = { NFC: [], AFC: [] };
+		for (const div of divisions) {
+			const conf = div.name.startsWith("NFC") ? "NFC" : "AFC";
+			conferences[conf].push(...div.rows);
+		}
+		for (const rows of Object.values(conferences)) {
+			[...rows]
+				.sort((a, b) => b.projectedTotal - a.projectedTotal)
+				.forEach((row, idx) => {
+					row.confRank = idx + 1;
+				});
+		}
 	},
 
 	// Idempotent: safe to call after a fresh parse, on process restart with

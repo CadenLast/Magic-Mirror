@@ -94,14 +94,15 @@
   opacity: 0.5;
 }
 
-.pool-header-row .pool-seed,
+.pool-header-row .pool-rank,
 .pool-header-row .pool-name {
   text-align: left;
 }
 
-.pool-seed {
-  width: 24px;
-  opacity: 0.6;
+.pool-rank {
+  width: 20px;
+  opacity: 0.5;
+  text-align: left;
 }
 
 .pool-name {
@@ -110,7 +111,7 @@
 
 .pool-num {
   text-align: right;
-  width: 30px;
+  width: 32px;
 }
 
 .pool-positive {
@@ -122,7 +123,7 @@
 }
 
 .pool-picks {
-  max-width: 150px;
+  max-width: 230px;
   text-align: right;
   opacity: 0.85;
 }
