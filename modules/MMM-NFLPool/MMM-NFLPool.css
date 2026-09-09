@@ -32,12 +32,12 @@
 
 .pool-division {
   margin-bottom: 14px;
+  padding: 6px 8px;
+  border-radius: 6px;
 }
 
 .pool-division-home {
   background: rgba(52, 152, 219, 0.12);
-  border-radius: 6px;
-  padding: 6px 8px;
 }
 
 .pool-division-name {
