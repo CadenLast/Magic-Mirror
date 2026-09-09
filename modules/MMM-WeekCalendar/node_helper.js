@@ -32,7 +32,9 @@ module.exports = NodeHelper.create({
 		);
 
 		fetcher.onReceive(() => {
-			const allEvents = Object.values(this.fetchers).flatMap((f) => f.events);
+			const allEvents = Object.values(this.fetchers)
+				.flatMap((f) => f.events)
+				.filter((event) => (event.class || "").toUpperCase() !== "PRIVATE");
 			this.sendSocketNotification("CALENDAR_DATA", allEvents);
 		});
 

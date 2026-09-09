@@ -57,6 +57,7 @@ Temporary Items
 # Ignore secrets and tokens
 config/config.env
 **/gmail_tokens.json
+**/pool_cache.json
 
 # Vim
 ## swap

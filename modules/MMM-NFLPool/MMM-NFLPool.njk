@@ -1,0 +1,61 @@
+{% macro divisionTable(div) %}
+  <table class="pool-table">
+    <thead>
+      <tr class="pool-header-row">
+        <th class="pool-rank"></th>
+        <th class="pool-name"></th>
+        <th class="pool-num">Tot</th>
+        <th class="pool-picks">Picks</th>
+        <th class="pool-num">Proj</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in div.rows %}
+        <tr class="pool-row {% if row.isUser %}pool-row-user{% endif %}">
+          <td class="pool-rank">{{ row.confRank }}</td>
+          <td class="pool-name">{{ row.name }}</td>
+          <td class="pool-num {{ row.totalClass }}">{{ row.total }}</td>
+          <td class="pool-picks">
+            <span class="pool-pick pool-pick-{{ row.pick1Status }}">{{ row.pickDisplay1 }} {{ row.pickPoints1 }}{% if row.pick1DoubleDown %}<sup class="pool-dd">2x</sup>{% endif %}</span>
+            /
+            <span class="pool-pick pool-pick-{{ row.pick2Status }}">{{ row.pickDisplay2 }} {{ row.pickPoints2 }}{% if row.pick2DoubleDown %}<sup class="pool-dd">2x</sup>{% endif %}</span>
+          </td>
+          <td class="pool-num {{ row.projectedTotalClass }}">{{ row.projectedTotal }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endmacro %}
+
+<div class="pool-wrapper">
+  {% if retryStatus %}
+    <div class="pool-retry-banner">{{ retryStatus }}</div>
+  {% endif %}
+  {% if not loaded %}
+    <div class="dimmed small pool-empty">Loading pool standings&hellip;</div>
+  {% elif hasGmail and not gmailConnected %}
+    <div class="pool-setup">
+      <i class="fa fa-envelope-o pool-setup-icon"></i>
+      <div class="pool-setup-text">Gmail not connected</div>
+      <div class="pool-setup-hint">Visit <span class="pool-setup-url">/MMM-NFLPool/auth</span> on this device to connect</div>
+    </div>
+  {% elif divisions.length == 0 %}
+    <div class="dimmed small pool-empty">{{ lastError or "No pool data yet" }}</div>
+  {% else %}
+    <div class="pool-header">{{ weekLabel or "NFL Pool" }}</div>
+    {% if homeDivision %}
+      <div class="pool-division pool-division-home">
+        <div class="pool-division-name">{{ homeDivision.displayName }}</div>
+        {{ divisionTable(homeDivision) }}
+      </div>
+    {% endif %}
+    <div class="pool-others-list">
+      {% for div in otherDivisions %}
+        <div class="pool-division">
+          <div class="pool-division-name">{{ div.displayName }}</div>
+          {{ divisionTable(div) }}
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>
