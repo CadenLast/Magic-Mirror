@@ -120,17 +120,17 @@ let config = {
 		},
 
 		{
-			module: "MMM-PackageTracking",
+			module: "MMM-NFLPool",
 			position: "top_right",
 			config: {
 				gmail: {
 					clientId: "${GMAIL_CLIENT_ID}",
 					clientSecret: "${GMAIL_CLIENT_SECRET}",
 				},
+				geminiKey: keys.gemini,
+				userName: "Caden",
 				refreshInterval: 30 * 60 * 1000,
-				emailScanInterval: 15 * 60 * 1000,
-				showDelivered: true,
-				daysToShowDelivered: 30
+				emailScanInterval: 4 * 60 * 60 * 1000
 			}
 		},
 		{

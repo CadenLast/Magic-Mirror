@@ -1,0 +1,44 @@
+{% macro divisionTable(div) %}
+  <table class="pool-table">
+    <tbody>
+      {% for row in div.rows %}
+        <tr class="pool-row {% if row.isUser %}pool-row-user{% endif %}">
+          <td class="pool-seed">{{ row.seed }}</td>
+          <td class="pool-name">{{ row.name }}</td>
+          <td class="pool-num {{ row.totalClass }}">{{ row.total }}</td>
+          <td class="pool-num {{ row.diffClass }}">{{ row.diff }}</td>
+          <td class="pool-num">{{ row.r3 }}</td>
+          <td class="pool-num {{ row.r3DiffClass }}">{{ row.r3Diff }}</td>
+          <td class="pool-picks">{{ row.pickDisplay1 }} / {{ row.pickDisplay2 }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endmacro %}
+
+<div class="pool-wrapper">
+  {% if not loaded %}
+    <div class="dimmed small pool-empty">Loading pool standings&hellip;</div>
+  {% elif hasGmail and not gmailConnected %}
+    <div class="pool-setup">
+      <i class="fa fa-envelope-o pool-setup-icon"></i>
+      <div class="pool-setup-text">Gmail not connected</div>
+      <div class="pool-setup-hint">Visit <span class="pool-setup-url">/MMM-NFLPool/auth</span> on this device to connect</div>
+    </div>
+  {% elif divisions.length == 0 %}
+    <div class="dimmed small pool-empty">{{ lastError or "No pool data yet" }}</div>
+  {% else %}
+    <div class="pool-header">{{ weekLabel or "NFL Pool" }}</div>
+    {% if homeDivision %}
+      <div class="pool-division-name">
+        Your Division &middot; {{ homeDivision.name }}
+        {% if rank %}<span class="pool-home-badge">rank {{ rank }} of {{ ofCount }}</span>{% endif %}
+      </div>
+      {{ divisionTable(homeDivision) }}
+    {% endif %}
+    {% if currentOther %}
+      <div class="pool-division-name">{{ currentOther.name }}</div>
+      {{ divisionTable(currentOther) }}
+    {% endif %}
+  {% endif %}
+</div>

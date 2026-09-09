@@ -1,0 +1,120 @@
+.MMM-NFLPool {
+  width: 430px;
+  align-self: flex-end;
+}
+
+/* Reserve height so the layout doesn't shift while loading (home division +
+   one rotating division, ~5 rows each). */
+.MMM-NFLPool .module-content {
+  min-height: 440px;
+}
+
+.pool-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.pool-header {
+  font-size: 1em;
+  color: var(--color-text-bright);
+  margin-bottom: 8px;
+}
+
+.pool-division-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8em;
+  color: var(--color-text);
+  opacity: 0.8;
+  margin: 10px 0 4px;
+}
+
+.pool-home-badge {
+  font-size: 0.85em;
+  color: #3498db;
+  opacity: 1;
+}
+
+.pool-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72em;
+}
+
+.pool-row {
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.pool-row-user {
+  background: rgba(52, 152, 219, 0.25);
+  font-weight: 600;
+}
+
+.pool-table td {
+  padding: 3px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pool-seed {
+  width: 24px;
+  opacity: 0.6;
+}
+
+.pool-name {
+  max-width: 90px;
+}
+
+.pool-num {
+  text-align: right;
+  width: 34px;
+}
+
+.pool-positive {
+  color: var(--color-text);
+}
+
+.pool-negative {
+  color: #e74c3c;
+}
+
+.pool-picks {
+  max-width: 140px;
+  text-align: right;
+  opacity: 0.85;
+}
+
+.pool-empty {
+  text-align: center;
+  padding: 18px 0;
+}
+
+.pool-setup {
+  text-align: center;
+  padding: 24px 12px;
+}
+
+.pool-setup-icon {
+  font-size: 2em;
+  color: var(--color-text);
+  opacity: 0.4;
+  margin-bottom: 10px;
+}
+
+.pool-setup-text {
+  font-size: 0.9em;
+  color: var(--color-text-bright);
+  margin-bottom: 6px;
+}
+
+.pool-setup-hint {
+  font-size: 0.7em;
+  color: var(--color-text);
+  opacity: 0.6;
+}
+
+.pool-setup-url {
+  color: #3498db;
+}
