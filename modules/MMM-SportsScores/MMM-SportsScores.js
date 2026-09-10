@@ -55,8 +55,12 @@ Module.register("MMM-SportsScores", {
 		this.isRankingsView = false;
 		this.standingsView = "league";
 		this._standingsOnlyUpdate = false;
-		this.runStaggeredRefresh();
-		this.scheduleRefresh();
+		// The active sport tab/standings view only live in browser memory, so
+		// they're gone on every restart - node_helper persists them to a local
+		// file (there's no browser-side persistent storage here) and this
+		// waits for that before doing the first fetch, rather than fetching
+		// the default sport first and immediately re-fetching the real one.
+		this.sendSocketNotification("LOAD_STATE", {});
 
 		document.addEventListener("mm-activity", () => {
 			if (this._resetTimer) clearTimeout(this._resetTimer);
@@ -266,6 +270,7 @@ Module.register("MMM-SportsScores", {
 						this.updateDom(0);
 						this.fetchScores();
 						this.fetchStandings();
+						this.saveState();
 					}
 					this.broadcastInteraction();
 				});
@@ -283,6 +288,7 @@ Module.register("MMM-SportsScores", {
 					this.dimStandingsColumn();
 					this._standingsOnlyUpdate = true;
 					this.fetchStandings();
+					this.saveState();
 					this.broadcastInteraction();
 				});
 			}
@@ -687,7 +693,24 @@ Module.register("MMM-SportsScores", {
 			this.standingsError = payload.message;
 			this.standingsLoaded = true;
 			this.refreshStandingsDisplay();
+		} else if (notification === "STATE_LOADED") {
+			// Bounds-checked in case the saved index refers to a sport that no
+			// longer exists (e.g. the sports config array was edited/shortened
+			// since the last restart).
+			if (Number.isInteger(payload.activeSportIndex) && payload.activeSportIndex >= 0 && payload.activeSportIndex < this.config.sports.length) {
+				this.activeSportIndex = payload.activeSportIndex;
+			}
+			if (payload.standingsView === "division" || payload.standingsView === "league") {
+				this.standingsView = payload.standingsView;
+			}
+			this.updateDom(0);
+			this.runStaggeredRefresh();
+			this.scheduleRefresh();
 		}
+	},
+
+	saveState () {
+		this.sendSocketNotification("SAVE_STATE", { activeSportIndex: this.activeSportIndex, standingsView: this.standingsView });
 	},
 
 	refreshStandingsDisplay () {

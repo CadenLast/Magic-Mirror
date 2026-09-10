@@ -11,6 +11,13 @@ const Log = require("logger");
 // assets, not source.
 const LOGO_CACHE_DIR = path.join(__dirname, "cache", "logos");
 
+// The frontend's UI selections (active sport tab, standings view) live only
+// in browser memory, so they're lost on every MagicMirror restart - this
+// small file is the only way to remember them across restarts, since the
+// browser side has no persistent storage of its own here. Not committed to
+// git (see .gitignore), same reasoning as the logo cache.
+const STATE_FILE = path.join(__dirname, "state.json");
+
 // A generic scraper-shaped request (Node's default fetch sends "User-Agent: node"
 // and little else) is an easy flag for bot detection on small athletics sites, so
 // this sends a browser-looking User-Agent instead - used by the Hawkeyes/Sidearm
@@ -173,6 +180,28 @@ module.exports = NodeHelper.create({
 			this.fetchFavorites(payload);
 		} else if (notification === "FETCH_STANDINGS") {
 			this.fetchStandings(payload);
+		} else if (notification === "LOAD_STATE") {
+			this.sendSocketNotification("STATE_LOADED", this.loadState());
+		} else if (notification === "SAVE_STATE") {
+			this.saveState(payload);
+		}
+	},
+
+	// Best-effort - a missing/corrupt file (first run, manual edit) just
+	// means falling back to the frontend's own defaults, not an error.
+	loadState () {
+		try {
+			return JSON.parse(fs.readFileSync(STATE_FILE, "utf8"));
+		} catch (error) {
+			return {};
+		}
+	},
+
+	saveState (state) {
+		try {
+			fs.writeFileSync(STATE_FILE, JSON.stringify(state));
+		} catch (error) {
+			Log.warn(`${this.name}: Failed to save state: ${error.message}`);
 		}
 	},
 
