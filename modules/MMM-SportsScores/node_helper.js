@@ -136,6 +136,31 @@ const COLLEGE_TEAM_LOGO_OVERRIDES = {
 
 const toIsoDate = (yyyymmdd) => `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 
+// A game's UTC timestamp often falls on a different calendar date than the
+// LOCAL (system timezone) date it's actually played on - a 7pm-midnight
+// Central game already reads as tomorrow in UTC. Date getters (getFullYear/
+// Month/Date) are local-timezone-aware, unlike toISOString()/slicing, so this
+// is the correct way to ask "what local calendar date is this" - used
+// wherever a game's real timestamp needs to line up against a locally-picked
+// browsing date.
+const toLocalDateString = (value) => {
+	const d = value instanceof Date ? value : new Date(value);
+	const yyyy = d.getFullYear();
+	const mm = String(d.getMonth() + 1).padStart(2, "0");
+	const dd = String(d.getDate()).padStart(2, "0");
+	return `${yyyy}-${mm}-${dd}`;
+};
+
+// Adds days to a "YYYY-MM-DD" string as a LOCAL calendar date (the
+// Date(y, m, d) constructor form is local-timezone-based, unlike
+// new Date("YYYY-MM-DD") which parses as UTC midnight).
+const addLocalDays = (isoDateStr, n) => {
+	const [y, m, d] = isoDateStr.split("-").map(Number);
+	const dt = new Date(y, m - 1, d);
+	dt.setDate(dt.getDate() + n);
+	return toLocalDateString(dt);
+};
+
 module.exports = NodeHelper.create({
 	start () {
 		Log.log(`Starting node helper for: ${this.name}`);
@@ -427,15 +452,34 @@ module.exports = NodeHelper.create({
 		return response;
 	},
 
+	// balldontlie's "dates[]" filter buckets games by their raw UTC calendar
+	// date, not the local sports-night date - confirmed directly: a game at
+	// 2026-09-10T00:20:00Z (7:20pm Central on the 9th) only shows up when
+	// queried for "2026-09-10", never "2026-09-09". A local evening game can
+	// therefore only ever land on the NEXT UTC calendar date, so querying
+	// that extra day and filtering the combined results down to games whose
+	// real local date matches is the only way to get "today" right.
 	async fetchBalldontlieGames (sport, league, date, apiKey) {
 		const leaguePath = BALLDONTLIE_LEAGUE_PATHS[league];
-		const url = `https://api.balldontlie.io/${leaguePath}/v1/games?dates[]=${toIsoDate(date)}`;
-		const response = await this.balldontlieFetch(apiKey, url);
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}`);
+		const localDate = toIsoDate(date);
+		const nextUtcDate = addLocalDays(localDate, 1);
+
+		const [todayResponse, nextDayResponse] = await Promise.all([
+			this.balldontlieFetch(apiKey, `https://api.balldontlie.io/${leaguePath}/v1/games?dates[]=${localDate}`),
+			this.balldontlieFetch(apiKey, `https://api.balldontlie.io/${leaguePath}/v1/games?dates[]=${nextUtcDate}`)
+		]);
+		if (!todayResponse.ok) {
+			throw new Error(`HTTP ${todayResponse.status}`);
 		}
-		const data = await response.json();
-		return (data.data || []).map((game) => this.parseBalldontlieGame(game, sport, league));
+		if (!nextDayResponse.ok) {
+			throw new Error(`HTTP ${nextDayResponse.status}`);
+		}
+		const [todayData, nextDayData] = await Promise.all([todayResponse.json(), nextDayResponse.json()]);
+
+		const dateField = league === "nba" ? "datetime" : "date";
+		return [...(todayData.data || []), ...(nextDayData.data || [])]
+			.filter((game) => toLocalDateString(game[dateField]) === localDate)
+			.map((game) => this.parseBalldontlieGame(game, sport, league));
 	},
 
 	// The in-app game popup renders in an iframe, and ESPN's CSP (frame-ancestors)
@@ -844,7 +888,10 @@ module.exports = NodeHelper.create({
 	async fetchCollegeTeamGameForDate (sport, team, date, cfbdKey) {
 		const games = await this.fetchCollegeTeamSchedule(sport, team, cfbdKey);
 		const target = toIsoDate(date);
-		return games.find((g) => (g.eventDate || "").slice(0, 10) === target) || null;
+		// eventDate is a raw UTC timestamp - comparing its date substring
+		// directly against the (local) target date put evening games one day
+		// late (e.g. a 7pm Central kickoff already reads as tomorrow in UTC).
+		return games.find((g) => g.eventDate && toLocalDateString(g.eventDate) === target) || null;
 	},
 
 	async fetchCollegeTeamSchedule (sport, team, cfbdKey) {
