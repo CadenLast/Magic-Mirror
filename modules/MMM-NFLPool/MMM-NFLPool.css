@@ -132,14 +132,14 @@
   opacity: 0.85;
 }
 
-.pool-pick-won,
-.pool-pick-winning {
+/* Only highlight once the game is actually final - "winning"/"losing" (still
+   in progress) intentionally get no color here, same as a normal pick. */
+.pool-pick-won {
   color: #2ecc71;
   opacity: 1;
 }
 
-.pool-pick-lost,
-.pool-pick-losing {
+.pool-pick-lost {
   color: #e74c3c;
   opacity: 1;
 }
