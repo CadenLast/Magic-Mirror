@@ -153,6 +153,7 @@ let config = {
 				],
 				favoriteTeams: [
 					{ team: "Bears", sport: "football", league: "nfl" },
+					{ team: "Buccaneers", sport: "football", league: "nfl" },
 					{ team: "Bulls", sport: "basketball", league: "nba" },
 					{ team: "Cubs", sport: "baseball", league: "mlb" }
 				],
