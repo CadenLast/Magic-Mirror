@@ -798,7 +798,15 @@ module.exports = NodeHelper.create({
 			return { swing: 0, status: "pending", gain: entry.gain, loss: entry.loss, isPreSunday: entry.isPreSunday };
 		}
 
-		if (live.awayScore === live.homeScore) return { swing: 0, status: "tied", gain: entry.gain, loss: entry.loss, isPreSunday: entry.isPreSunday };
+		if (live.awayScore === live.homeScore) {
+			// A tied score mid-game is common and says nothing about the final
+			// result - only collapse to a locked-in "0" once the game is
+			// actually over (a final tie is rare in the NFL, but possible).
+			// While still live, keep showing both possible outcomes like any
+			// other in-progress pick.
+			const status = live.state === "post" ? "tied" : "even";
+			return { swing: 0, status, gain: entry.gain, loss: entry.loss, isPreSunday: entry.isPreSunday };
+		}
 
 		const teamLower = teamName.toLowerCase();
 		const isAway = live.awayTeam.toLowerCase().includes(teamLower);
