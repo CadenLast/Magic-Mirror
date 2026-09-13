@@ -14,6 +14,13 @@ const DIVISIONS = ["NFCEast", "NFCNorth", "NFCSouth", "NFCWest", "AFCEast", "AFC
 const MAX_FAIL_RETRIES = 5;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
+// The sender typically sends the weekly pool email early Sunday afternoon -
+// start checking right at that expected time instead of on the same slow
+// cadence used the rest of the week.
+const SUNDAY_CHECK_HOUR = 11;
+const SUNDAY_CHECK_MINUTE = 30;
+const SUNDAY_POLL_INTERVAL_MS = 60 * 1000;
+
 const WORD_NUMBERS = {
 	one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
 	ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15,
@@ -134,12 +141,44 @@ module.exports = NodeHelper.create({
 	},
 
 	scheduleScan () {
-		if (this.scanTimer) clearInterval(this.scanTimer);
-		const interval = this.config?.emailScanInterval || 4 * 60 * 60 * 1000;
-		this.scanTimer = setInterval(async () => {
+		if (this.scanTimer) clearTimeout(this.scanTimer);
+		this.scanTimer = setTimeout(async () => {
 			await this.scanGmail();
 			this.sendPoolData();
-		}, interval);
+			this.scheduleScan();
+		}, this.getScanDelay());
+	},
+
+	// The pool email usually lands early Sunday afternoon - once past the
+	// expected time with no email received yet that week, poll every minute
+	// instead of waiting for the next slow, regular-interval tick to happen
+	// to land in that window. Otherwise, use the normal interval, but never
+	// sleep past the upcoming Sunday cutoff itself (so the first check after
+	// it doesn't happen late).
+	getScanDelay () {
+		const normalInterval = this.config?.emailScanInterval || 4 * 60 * 60 * 1000;
+		const now = new Date();
+		const cutoff = this.mostRecentSundayCutoff(now);
+		const hasThisWeeksEmail = !!this.cache.lastParsedAt && new Date(this.cache.lastParsedAt) >= cutoff;
+
+		if (now >= cutoff && !hasThisWeeksEmail) {
+			return SUNDAY_POLL_INTERVAL_MS;
+		}
+
+		const nextCutoff = new Date(cutoff);
+		nextCutoff.setDate(nextCutoff.getDate() + 7);
+		return Math.min(normalInterval, nextCutoff - now);
+	},
+
+	// The most recent Sunday 11:30am that isn't in the future.
+	mostRecentSundayCutoff (now) {
+		const cutoff = new Date(now);
+		cutoff.setDate(cutoff.getDate() - cutoff.getDay());
+		cutoff.setHours(SUNDAY_CHECK_HOUR, SUNDAY_CHECK_MINUTE, 0, 0);
+		if (cutoff > now) {
+			cutoff.setDate(cutoff.getDate() - 7);
+		}
+		return cutoff;
 	},
 
 	sendPoolData () {
