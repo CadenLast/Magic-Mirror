@@ -775,15 +775,25 @@ module.exports = NodeHelper.create({
 
 	// Pending: show both possible outcomes ("+4/-2"). Decided (live-leading or
 	// final), tied, or bye: show just the one actual/current value.
+	// Pending or still-live (winning/losing): show both possible outcomes,
+	// not just whichever one currently applies - a live game can still
+	// swing the other way before it's final. The one that ISN'T how the
+	// game presently stands gets a dimming class rather than disappearing,
+	// so it's clear it's not locked in yet. Decided (won/lost) or tied: show
+	// just the one real, final value.
 	formatPickPoints (outcome, multiplier) {
 		if (outcome.status === "bye") return "";
-		if (outcome.status === "pending") {
-			if (outcome.gain === null) return "";
-			return `+${outcome.gain * multiplier}/${outcome.loss * multiplier}`;
-		}
 		if (outcome.status === "tied") return "0";
-		const swing = outcome.swing * multiplier;
-		return swing >= 0 ? `+${swing}` : `${swing}`;
+		if (outcome.status === "won" || outcome.status === "lost") {
+			const swing = outcome.swing * multiplier;
+			return swing >= 0 ? `+${swing}` : `${swing}`;
+		}
+		if (outcome.gain === null) return "";
+		const gainText = `+${outcome.gain * multiplier}`;
+		const lossText = `${outcome.loss * multiplier}`;
+		if (outcome.status === "winning") return `${gainText}/<span class="pool-pick-inactive">${lossText}</span>`;
+		if (outcome.status === "losing") return `<span class="pool-pick-inactive">${gainText}</span>/${lossText}`;
+		return `${gainText}/${lossText}`;
 	},
 
 	computeProjections (divisions, games, liveGames) {

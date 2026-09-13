@@ -150,6 +150,12 @@
   opacity: 0.6;
 }
 
+/* The half of a live pick's +/- that isn't how the game currently stands -
+   still shown (it's not locked in until final), just dimmed. */
+.pool-pick-inactive {
+  opacity: 0.45;
+}
+
 .pool-dd {
   color: #f39c12;
   font-size: 0.85em;
