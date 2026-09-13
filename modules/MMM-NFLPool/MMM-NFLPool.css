@@ -6,7 +6,7 @@
 /* Reserve height so the layout doesn't shift while loading (home division
    pinned above a scrollable list of the other 7). */
 .MMM-NFLPool .module-content {
-  min-height: 500px;
+  min-height: 620px;
 }
 
 .pool-wrapper {
@@ -58,7 +58,7 @@
 }
 
 .pool-others-list {
-  max-height: 320px;
+  max-height: 440px;
   overflow-y: auto;
   scrollbar-width: none;
 }
