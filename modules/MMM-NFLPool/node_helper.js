@@ -795,6 +795,14 @@ module.exports = NodeHelper.create({
 	},
 
 	computeProjections (divisions, games, liveGames) {
+		// row.total is left untouched here (still exactly what the pool
+		// starts the week with) - projectedTotal only counts swing from
+		// picks whose game has actually finished ("won"/"lost"/"tied"), not
+		// ones still live ("winning"/"losing"), so it doesn't fluctuate on
+		// every scoring play before a result is actually final. The
+		// individual pick display (pickPoints1/2) still shows live status -
+		// only this running total waits for a real result.
+		const isFinalOutcome = (status) => status === "won" || status === "lost" || status === "tied";
 		const projected = divisions.map((div) => ({
 			...div,
 			rows: div.rows
@@ -803,8 +811,8 @@ module.exports = NodeHelper.create({
 					const outcome2 = this.computePickOutcome(row.pick2Team, games, liveGames);
 					const mult1 = row.pick1DoubleDown ? 2 : 1;
 					const mult2 = row.pick2DoubleDown ? 2 : 1;
-					const swing1 = outcome1.swing * mult1;
-					const swing2 = outcome2.swing * mult2;
+					const swing1 = isFinalOutcome(outcome1.status) ? outcome1.swing * mult1 : 0;
+					const swing2 = isFinalOutcome(outcome2.status) ? outcome2.swing * mult2 : 0;
 					const projectedTotal = row.total + swing1 + swing2;
 
 					return {
@@ -821,6 +829,7 @@ module.exports = NodeHelper.create({
 		}));
 
 		this.computeConferenceRanks(projected);
+		this.markBiggestLosers(projected);
 
 		// Vacuously true for an empty games list (e.g. a season-announcement
 		// email with no games table yet) - nothing to poll for, so don't start
@@ -833,25 +842,62 @@ module.exports = NodeHelper.create({
 		return { projected, allGamesFinal };
 	},
 
-	// Ranks 1..N within each conference (NFC/AFC) by projectedTotal, pooling
-	// all 4 divisions per conference together - not just within one division.
-	// Top 7 (the real NFL playoff field size) display as a live seed 1-7;
-	// everyone else displays as "+N", how many spots past the last wildcard
-	// spot they currently are.
+	// This pool's own playoff format (not the real current NFL one): 4
+	// division champs + 4 wildcards per conference, 8 total. A division
+	// champ is guaranteed in regardless of their conference-wide rank (real
+	// NFL rules work the same way - a weak division's winner still gets in
+	// over a better non-champion elsewhere), so this finds each division's
+	// own top scorer first ("D"), then fills the 4 wildcard spots ("WC")
+	// from whoever's left in that conference, ranked by score. Everyone else
+	// shows "+N", how many spots past the last wildcard spot they currently
+	// are.
 	computeConferenceRanks (divisions) {
-		const PLAYOFF_SPOTS = 7;
+		const WILDCARD_SPOTS = 4;
 		const conferences = { NFC: [], AFC: [] };
 		for (const div of divisions) {
 			const conf = div.name.startsWith("NFC") ? "NFC" : "AFC";
-			conferences[conf].push(...div.rows);
+			for (const row of div.rows) {
+				conferences[conf].push({ row, division: div.name });
+			}
 		}
-		for (const rows of Object.values(conferences)) {
-			[...rows]
-				.sort((a, b) => b.projectedTotal - a.projectedTotal)
-				.forEach((row, idx) => {
-					row.confRank = idx + 1;
-					row.seedDisplay = row.confRank <= PLAYOFF_SPOTS ? String(row.confRank) : `+${row.confRank - PLAYOFF_SPOTS}`;
-				});
+
+		for (const entries of Object.values(conferences)) {
+			const byDivision = new Map();
+			for (const entry of entries) {
+				if (!byDivision.has(entry.division)) byDivision.set(entry.division, []);
+				byDivision.get(entry.division).push(entry);
+			}
+
+			const champs = new Set();
+			for (const group of byDivision.values()) {
+				const champ = [...group].sort((a, b) => b.row.projectedTotal - a.row.projectedTotal)[0];
+				if (champ) champs.add(champ.row);
+			}
+
+			const nonChamps = entries
+				.map((entry) => entry.row)
+				.filter((row) => !champs.has(row))
+				.sort((a, b) => b.projectedTotal - a.projectedTotal);
+
+			for (const row of champs) {
+				row.seedDisplay = "D";
+			}
+			nonChamps.forEach((row, idx) => {
+				row.seedDisplay = idx < WILDCARD_SPOTS ? "WC" : `+${idx - WILDCARD_SPOTS + 1}`;
+			});
+		}
+	},
+
+	// Pool-wide (both conferences, all 8 divisions together) - the bottom 5
+	// scorers get "BL" ("Biggest Losers"), overriding whatever seed they'd
+	// otherwise show (though in practice a team scoring this low was never
+	// going to be a division champ or wildcard anyway).
+	markBiggestLosers (divisions) {
+		const BIGGEST_LOSERS_COUNT = 5;
+		const allRows = divisions.flatMap((div) => div.rows);
+		const losers = [...allRows].sort((a, b) => a.projectedTotal - b.projectedTotal).slice(0, BIGGEST_LOSERS_COUNT);
+		for (const row of losers) {
+			row.seedDisplay = "BL";
 		}
 	},
 
