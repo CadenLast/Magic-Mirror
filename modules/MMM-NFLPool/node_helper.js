@@ -495,22 +495,49 @@ module.exports = NodeHelper.create({
 		const html = htmlParts.map((p) => Buffer.from(p.body?.data || "", "base64url").toString("utf8")).join("\n");
 		const text = this.stripHtmlToText(html);
 
+		// Split into per-section chunks first so each game can be tagged with
+		// which day/time it's under - a Thursday (or any pre-Sunday) game is
+		// already over by the time the Sunday email goes out, so the
+		// spreadsheet's own Total already includes it; a Sunday/Monday game
+		// is still ahead of us and needs tracking live. Without this tag,
+		// computeProjections would double-count an already-finished
+		// Thursday game once our own live tracking also picks it up.
+		const sectionRegex = /(THURSDAY NIGHT|FRIDAY NIGHT|SATURDAY NIGHT|SUNDAY EARLY|SUNDAY LATE|SUNDAY NIGHT|MONDAY NIGHT)/g;
+		const sections = [];
+		let lastIndex = 0;
+		let lastSection = null;
+		let sectionMatch;
+		while ((sectionMatch = sectionRegex.exec(text))) {
+			if (lastSection !== null) {
+				sections.push({ section: lastSection, text: text.slice(lastIndex, sectionMatch.index) });
+			}
+			lastSection = sectionMatch[1];
+			lastIndex = sectionMatch.index + sectionMatch[0].length;
+		}
+		if (lastSection !== null) {
+			sections.push({ section: lastSection, text: text.slice(lastIndex) });
+		}
+
 		// e.g. "49ers 3 -2 0 at Rams 2 -3 0" - team name, gain, loss, then a
 		// separate bold/starred number that isn't needed, "at", then the same
-		// for the home team. Section headers (THURSDAY NIGHT, SUNDAY EARLY,
-		// etc.) don't match this shape at all and are just skipped over.
+		// for the home team.
 		const gameRegex = /(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}\s+at\s+(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}/g;
 		const games = [];
-		let match;
-		while ((match = gameRegex.exec(text))) {
-			games.push({
-				awayTeam: match[1],
-				awayGain: parseInt(match[2], 10),
-				awayLoss: parseInt(match[3], 10),
-				homeTeam: match[4],
-				homeGain: parseInt(match[5], 10),
-				homeLoss: parseInt(match[6], 10)
-			});
+		for (const { section, text: sectionText } of sections) {
+			const isPreSunday = !section.startsWith("SUNDAY") && !section.startsWith("MONDAY");
+			gameRegex.lastIndex = 0;
+			let match;
+			while ((match = gameRegex.exec(sectionText))) {
+				games.push({
+					awayTeam: match[1],
+					awayGain: parseInt(match[2], 10),
+					awayLoss: parseInt(match[3], 10),
+					homeTeam: match[4],
+					homeGain: parseInt(match[5], 10),
+					homeLoss: parseInt(match[6], 10),
+					isPreSunday
+				});
+			}
 		}
 		return games;
 	},
@@ -743,24 +770,24 @@ module.exports = NodeHelper.create({
 		if (!teamName) return null;
 		const lower = teamName.toLowerCase();
 		for (const game of games) {
-			if (game.awayTeam.toLowerCase() === lower) return { gain: game.awayGain, loss: game.awayLoss };
-			if (game.homeTeam.toLowerCase() === lower) return { gain: game.homeGain, loss: game.homeLoss };
+			if (game.awayTeam.toLowerCase() === lower) return { gain: game.awayGain, loss: game.awayLoss, isPreSunday: game.isPreSunday };
+			if (game.homeTeam.toLowerCase() === lower) return { gain: game.homeGain, loss: game.homeLoss, isPreSunday: game.isPreSunday };
 		}
 		return null;
 	},
 
 	computePickOutcome (teamName, games, liveGames) {
-		if (!teamName || teamName === "-bye-") return { swing: 0, status: "bye", gain: null, loss: null };
+		if (!teamName || teamName === "-bye-") return { swing: 0, status: "bye", gain: null, loss: null, isPreSunday: false };
 
 		const entry = this.findGameEntry(teamName, games);
-		if (!entry) return { swing: 0, status: "pending", gain: null, loss: null };
+		if (!entry) return { swing: 0, status: "pending", gain: null, loss: null, isPreSunday: false };
 
 		const live = this.matchLiveGame(teamName, liveGames);
 		if (!live || live.state === "pre" || live.awayScore === null || live.homeScore === null) {
-			return { swing: 0, status: "pending", gain: entry.gain, loss: entry.loss };
+			return { swing: 0, status: "pending", gain: entry.gain, loss: entry.loss, isPreSunday: entry.isPreSunday };
 		}
 
-		if (live.awayScore === live.homeScore) return { swing: 0, status: "tied", gain: entry.gain, loss: entry.loss };
+		if (live.awayScore === live.homeScore) return { swing: 0, status: "tied", gain: entry.gain, loss: entry.loss, isPreSunday: entry.isPreSunday };
 
 		const teamLower = teamName.toLowerCase();
 		const isAway = live.awayTeam.toLowerCase().includes(teamLower);
@@ -770,11 +797,9 @@ module.exports = NodeHelper.create({
 		const swing = isLeading ? entry.gain : entry.loss;
 		const status = live.state === "post" ? (isLeading ? "won" : "lost") : (isLeading ? "winning" : "losing");
 
-		return { swing, status, gain: entry.gain, loss: entry.loss };
+		return { swing, status, gain: entry.gain, loss: entry.loss, isPreSunday: entry.isPreSunday };
 	},
 
-	// Pending: show both possible outcomes ("+4/-2"). Decided (live-leading or
-	// final), tied, or bye: show just the one actual/current value.
 	// Pending or still-live (winning/losing): show both possible outcomes,
 	// not just whichever one currently applies - a live game can still
 	// swing the other way before it's final. The one that ISN'T how the
@@ -804,7 +829,16 @@ module.exports = NodeHelper.create({
 		// every scoring play before a result is actually final. The
 		// individual pick display (pickPoints1/2) still shows live status -
 		// only this running total waits for a real result.
+		//
+		// A pre-Sunday (e.g. Thursday night) pick that's already final is a
+		// special case: the spreadsheet screenshot was taken (and the email
+		// sent) AFTER that game already finished, so row.total on the
+		// sender's own sheet already includes it - adding its swing again
+		// here would double-count the same real result. Only a
+		// still-live/pending pre-Sunday pick needs no special handling
+		// (nothing to double-count yet).
 		const isFinalOutcome = (status) => status === "won" || status === "lost" || status === "tied";
+		const countsTowardTotal = (outcome) => isFinalOutcome(outcome.status) && !outcome.isPreSunday;
 		const projected = divisions.map((div) => ({
 			...div,
 			rows: div.rows
@@ -813,8 +847,8 @@ module.exports = NodeHelper.create({
 					const outcome2 = this.computePickOutcome(row.pick2Team, games, liveGames);
 					const mult1 = row.pick1DoubleDown ? 2 : 1;
 					const mult2 = row.pick2DoubleDown ? 2 : 1;
-					const swing1 = isFinalOutcome(outcome1.status) ? outcome1.swing * mult1 : 0;
-					const swing2 = isFinalOutcome(outcome2.status) ? outcome2.swing * mult2 : 0;
+					const swing1 = countsTowardTotal(outcome1) ? outcome1.swing * mult1 : 0;
+					const swing2 = countsTowardTotal(outcome2) ? outcome2.swing * mult2 : 0;
 					const projectedTotal = row.total + swing1 + swing2;
 
 					return {
