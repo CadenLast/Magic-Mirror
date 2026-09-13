@@ -502,20 +502,24 @@ module.exports = NodeHelper.create({
 		// is still ahead of us and needs tracking live. Without this tag,
 		// computeProjections would double-count an already-finished
 		// Thursday game once our own live tracking also picks it up.
-		const sectionRegex = /(THURSDAY NIGHT|FRIDAY NIGHT|SATURDAY NIGHT|SUNDAY EARLY|SUNDAY LATE|SUNDAY NIGHT|MONDAY NIGHT)/g;
+		// Match any day name here, not a hardcoded subset - the sender has used
+		// an unlisted "WEDNESDAY NIGHT" section before (e.g. a season-opener
+		// game), and a hardcoded list silently drops that section's games
+		// entirely instead of just mis-tagging them.
+		const sectionRegex = /(SUNDAY|MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY)\s+(NIGHT|EARLY|LATE|AFTERNOON|MORNING)/g;
 		const sections = [];
 		let lastIndex = 0;
-		let lastSection = null;
+		let lastSectionDay = null;
 		let sectionMatch;
 		while ((sectionMatch = sectionRegex.exec(text))) {
-			if (lastSection !== null) {
-				sections.push({ section: lastSection, text: text.slice(lastIndex, sectionMatch.index) });
+			if (lastSectionDay !== null) {
+				sections.push({ day: lastSectionDay, text: text.slice(lastIndex, sectionMatch.index) });
 			}
-			lastSection = sectionMatch[1];
+			lastSectionDay = sectionMatch[1];
 			lastIndex = sectionMatch.index + sectionMatch[0].length;
 		}
-		if (lastSection !== null) {
-			sections.push({ section: lastSection, text: text.slice(lastIndex) });
+		if (lastSectionDay !== null) {
+			sections.push({ day: lastSectionDay, text: text.slice(lastIndex) });
 		}
 
 		// e.g. "49ers 3 -2 0 at Rams 2 -3 0" - team name, gain, loss, then a
@@ -523,8 +527,8 @@ module.exports = NodeHelper.create({
 		// for the home team.
 		const gameRegex = /(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}\s+at\s+(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}/g;
 		const games = [];
-		for (const { section, text: sectionText } of sections) {
-			const isPreSunday = !section.startsWith("SUNDAY") && !section.startsWith("MONDAY");
+		for (const { day, text: sectionText } of sections) {
+			const isPreSunday = day !== "SUNDAY" && day !== "MONDAY";
 			gameRegex.lastIndex = 0;
 			let match;
 			while ((match = gameRegex.exec(sectionText))) {
