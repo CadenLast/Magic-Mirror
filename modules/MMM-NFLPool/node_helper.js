@@ -352,10 +352,18 @@ module.exports = NodeHelper.create({
 			if (!accessToken) return;
 
 			const senderEmail = this.config.senderEmail || "bcimorelli@gmail.com";
-			// newer_than guards against ever matching a stale "Picks and Preview"
-			// email left over from a prior season if this season hasn't sent one
-			// yet - confirmed live that this can otherwise happen.
-			const query = `from:${senderEmail} subject:"NFL Pool" subject:preview newer_than:14d`;
+			// The subject wording isn't stable season to season - it used to
+			// always include "Preview" (e.g. "Picks and Preview"), but this
+			// season's actual weekly email is just "Week One Picks" with no
+			// "Preview" at all, which the old subject:preview filter missed
+			// entirely. "picks" alone is too broad though - this sender also
+			// sends an unrelated midweek "NFL Pool - Weds picks" email - so
+			// that's filtered out below by requiring the message to have
+			// actually been sent on a Sunday, which reliably distinguishes the
+			// real weekly email regardless of whatever it's titled that week.
+			// newer_than guards against ever matching a stale email left over
+			// from a prior season if this season hasn't sent one yet.
+			const query = `from:${senderEmail} subject:"NFL Pool" subject:picks newer_than:14d`;
 			const listResp = await fetch(`${GMAIL_API}/messages?q=${encodeURIComponent(query)}&maxResults=10`, {
 				headers: { Authorization: `Bearer ${accessToken}` }
 			});
@@ -370,7 +378,7 @@ module.exports = NodeHelper.create({
 			const metas = [];
 			for (const msg of messages) {
 				const meta = await this.fetchMessageMeta(accessToken, msg.id);
-				if (meta) metas.push(meta);
+				if (meta && meta.date && meta.date.getDay() === 0) metas.push(meta);
 			}
 			metas.sort((a, b) => (b.date?.getTime() || 0) - (a.date?.getTime() || 0));
 			if (metas.length === 0) return;
@@ -619,8 +627,10 @@ module.exports = NodeHelper.create({
 		// itself, so it needs stripping here rather than showing up literally
 		// on screen. Keeps letters/spaces/apostrophes/hyphens/periods (real
 		// names can have all of those - "Mary-Jane O'Brien Jr."), strips
-		// anything else.
-		const cleanName = (name) => (name || "").replace(/[^a-zA-Z\s'.-]/g, "").replace(/\s+/g, " ").trim();
+		// anything else - including a dangling trailing hyphen that's left
+		// over once the symbol after it is gone (a real name never ends in a
+		// bare "-", it's always between two words).
+		const cleanName = (name) => (name || "").replace(/[^a-zA-Z\s'.-]/g, "").replace(/\s+/g, " ").trim().replace(/[\s-]+$/, "");
 		return divisions.map((div) => ({
 			name: div.name,
 			rows: (div.rows || []).map((row) => ({
