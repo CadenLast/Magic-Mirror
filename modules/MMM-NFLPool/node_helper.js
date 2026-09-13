@@ -46,7 +46,7 @@ const POOL_SCHEMA = {
 						type: "ARRAY",
 						items: {
 							type: "OBJECT",
-							required: ["seed", "name", "total", "diff", "r3", "r3Diff", "pick1", "pick1Extra", "pick2", "pick2Extra"],
+							required: ["seed", "name", "total", "diff", "r3", "r3Diff", "pick1", "pick2"],
 							properties: {
 								seed: { type: "STRING" },
 								name: { type: "STRING" },
@@ -55,9 +55,7 @@ const POOL_SCHEMA = {
 								r3: { type: "INTEGER" },
 								r3Diff: { type: "INTEGER" },
 								pick1: { type: "STRING" },
-								pick1Extra: { type: "STRING" },
-								pick2: { type: "STRING" },
-								pick2Extra: { type: "STRING" }
+								pick2: { type: "STRING" }
 							}
 						}
 					}
@@ -92,7 +90,7 @@ const USER_PROMPT = [
 	"",
 	"For the seed cell, transcribe exactly what is shown, or an empty string if the cell is blank - do not guess or normalize the code.",
 	"",
-	"For the two Pick columns, transcribe the team name exactly as written (or \"-bye-\" literally if that's what's shown). Occasionally there is a small extra value in or immediately before a pick cell (e.g. a lone number like \"1\") - capture that in the matching pick1Extra/pick2Extra field as a string, and use an empty string when there is no such extra value.",
+	"For the two Pick columns, transcribe the team name exactly as written (or \"-bye-\" literally if that's what's shown).",
 	"",
 	"Extract every row in every one of the 8 division sections - do not omit any player, and do not merge or reorder rows. If the image shows a week or round label (e.g. \"Week 13\" or \"Wild Card\"), put it in weekLabel; otherwise leave weekLabel as an empty string.",
 	"",
@@ -396,7 +394,7 @@ module.exports = NodeHelper.create({
 				const imagePart = this.findLargestImageAttachment(full.payload);
 				if (!imagePart) continue;
 
-				await this.processEmailImage(accessToken, meta, imagePart);
+				await this.processEmailImage(accessToken, meta, imagePart, full.payload);
 				return;
 			}
 		} catch (error) {
@@ -463,7 +461,92 @@ module.exports = NodeHelper.create({
 
 	// --- Email Processing ---
 
-	async processEmailImage (accessToken, meta, imagePart) {
+	// The per-game points table is also always present as plain, reliably
+	// structured text in the email body itself (confirmed across many weeks'
+	// worth of real emails) - unlike asking vision to read it off the
+	// screenshot, which can and does just come back empty. Text parsing is
+	// the primary source; vision's own games array (if any) is only a
+	// fallback for whenever this format itself changes.
+	findHtmlParts (payload) {
+		const results = [];
+		const visit = (part) => {
+			if (!part) return;
+			if (part.mimeType?.startsWith("text/html")) results.push(part);
+			if (part.parts) for (const child of part.parts) visit(child);
+		};
+		visit(payload);
+		return results;
+	},
+
+	stripHtmlToText (html) {
+		return html
+			.replace(/<style[\s\S]*?<\/style>/gi, "")
+			.replace(/<script[\s\S]*?<\/script>/gi, "")
+			.replace(/<[^>]+>/g, " ")
+			.replace(/&nbsp;/g, " ")
+			.replace(/&amp;/g, "&")
+			.replace(/\s+/g, " ")
+			.trim();
+	},
+
+	parseGamesFromEmailPayload (payload) {
+		const htmlParts = this.findHtmlParts(payload);
+		if (htmlParts.length === 0) return [];
+		const html = htmlParts.map((p) => Buffer.from(p.body?.data || "", "base64url").toString("utf8")).join("\n");
+		const text = this.stripHtmlToText(html);
+
+		// Split into per-section chunks first so each game can be tagged with
+		// which day/time it's under - a Thursday (or any pre-Sunday) game is
+		// already over by the time the Sunday email goes out, so the
+		// spreadsheet's own Total already includes it; a Sunday/Monday game
+		// is still ahead of us and needs tracking live. Without this tag,
+		// computeProjections would double-count an already-finished
+		// Thursday game once our own live tracking also picks it up.
+		// Match any day name here, not a hardcoded subset - the sender has used
+		// an unlisted "WEDNESDAY NIGHT" section before (e.g. a season-opener
+		// game), and a hardcoded list silently drops that section's games
+		// entirely instead of just mis-tagging them.
+		const sectionRegex = /(SUNDAY|MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY)\s+(NIGHT|EARLY|LATE|AFTERNOON|MORNING)/g;
+		const sections = [];
+		let lastIndex = 0;
+		let lastSectionDay = null;
+		let sectionMatch;
+		while ((sectionMatch = sectionRegex.exec(text))) {
+			if (lastSectionDay !== null) {
+				sections.push({ day: lastSectionDay, text: text.slice(lastIndex, sectionMatch.index) });
+			}
+			lastSectionDay = sectionMatch[1];
+			lastIndex = sectionMatch.index + sectionMatch[0].length;
+		}
+		if (lastSectionDay !== null) {
+			sections.push({ day: lastSectionDay, text: text.slice(lastIndex) });
+		}
+
+		// e.g. "49ers 3 -2 0 at Rams 2 -3 0" - team name, gain, loss, then a
+		// separate bold/starred number that isn't needed, "at", then the same
+		// for the home team.
+		const gameRegex = /(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}\s+at\s+(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}/g;
+		const games = [];
+		for (const { day, text: sectionText } of sections) {
+			const isPreSunday = day !== "SUNDAY" && day !== "MONDAY";
+			gameRegex.lastIndex = 0;
+			let match;
+			while ((match = gameRegex.exec(sectionText))) {
+				games.push({
+					awayTeam: match[1],
+					awayGain: parseInt(match[2], 10),
+					awayLoss: parseInt(match[3], 10),
+					homeTeam: match[4],
+					homeGain: parseInt(match[5], 10),
+					homeLoss: parseInt(match[6], 10),
+					isPreSunday
+				});
+			}
+		}
+		return games;
+	},
+
+	async processEmailImage (accessToken, meta, imagePart, emailPayload) {
 		try {
 			if (!this.config.geminiKey) {
 				throw new Error("Gemini API key not configured");
@@ -479,7 +562,8 @@ module.exports = NodeHelper.create({
 
 			const { weekLabel, week } = this.resolveWeek(meta.subject, result.weekLabel);
 			const userName = this.config.userName || "Caden";
-			const games = result.games || [];
+			const textGames = this.parseGamesFromEmailPayload(emailPayload);
+			const games = textGames.length > 0 ? textGames : (result.games || []);
 			const rawDivisions = this.annotateRows(result.divisions || [], userName);
 
 			this.cache.lastProcessedMessageId = meta.id;
@@ -616,10 +700,6 @@ module.exports = NodeHelper.create({
 
 	annotateRows (divisions, userName) {
 		const nameLower = userName.trim().toLowerCase();
-		const hasExtra = (extra) => {
-			const trimmed = (extra || "").trim();
-			return trimmed !== "" && trimmed !== "-";
-		};
 		const isDoubleDown = (pick) => !!pick && pick !== "-bye-" && pick === pick.toUpperCase() && pick !== pick.toLowerCase();
 		// The spreadsheet sometimes marks a player's name with a trailing
 		// symbol (*, #, +, etc. - whatever this pool's own convention is for
@@ -636,6 +716,13 @@ module.exports = NodeHelper.create({
 			rows: (div.rows || []).map((row) => ({
 				seed: row.seed || "",
 				name: cleanName(row.name),
+				// rawTotal is exactly what the sender's sheet showed, and is
+				// never itself reassigned - recomputeProjections overwrites
+				// cache.data.divisions with computeProjections's own output
+				// every cycle, so a mutated "total" field would keep getting
+				// re-adjusted from an already-adjusted value on every
+				// subsequent tick instead of the real original.
+				rawTotal: row.total,
 				total: row.total,
 				totalClass: row.total < 0 ? "pool-negative" : "pool-positive",
 				diff: row.diff,
@@ -647,8 +734,6 @@ module.exports = NodeHelper.create({
 				pick2Team: row.pick2 || "",
 				pick1DoubleDown: isDoubleDown(row.pick1),
 				pick2DoubleDown: isDoubleDown(row.pick2),
-				pickDisplay1: hasExtra(row.pick1Extra) ? `${row.pick1Extra.trim()} ${row.pick1}` : (row.pick1 || ""),
-				pickDisplay2: hasExtra(row.pick2Extra) ? `${row.pick2Extra.trim()} ${row.pick2}` : (row.pick2 || ""),
 				isUser: !!(row.name && row.name.toLowerCase().includes(nameLower))
 			}))
 		}));
@@ -696,24 +781,24 @@ module.exports = NodeHelper.create({
 		if (!teamName) return null;
 		const lower = teamName.toLowerCase();
 		for (const game of games) {
-			if (game.awayTeam.toLowerCase() === lower) return { gain: game.awayGain, loss: game.awayLoss };
-			if (game.homeTeam.toLowerCase() === lower) return { gain: game.homeGain, loss: game.homeLoss };
+			if (game.awayTeam.toLowerCase() === lower) return { gain: game.awayGain, loss: game.awayLoss, isPreSunday: game.isPreSunday };
+			if (game.homeTeam.toLowerCase() === lower) return { gain: game.homeGain, loss: game.homeLoss, isPreSunday: game.isPreSunday };
 		}
 		return null;
 	},
 
 	computePickOutcome (teamName, games, liveGames) {
-		if (!teamName || teamName === "-bye-") return { swing: 0, status: "bye", gain: null, loss: null };
+		if (!teamName || teamName === "-bye-") return { swing: 0, status: "bye", gain: null, loss: null, isPreSunday: false };
 
 		const entry = this.findGameEntry(teamName, games);
-		if (!entry) return { swing: 0, status: "pending", gain: null, loss: null };
+		if (!entry) return { swing: 0, status: "pending", gain: null, loss: null, isPreSunday: false };
 
 		const live = this.matchLiveGame(teamName, liveGames);
 		if (!live || live.state === "pre" || live.awayScore === null || live.homeScore === null) {
-			return { swing: 0, status: "pending", gain: entry.gain, loss: entry.loss };
+			return { swing: 0, status: "pending", gain: entry.gain, loss: entry.loss, isPreSunday: entry.isPreSunday };
 		}
 
-		if (live.awayScore === live.homeScore) return { swing: 0, status: "tied", gain: entry.gain, loss: entry.loss };
+		if (live.awayScore === live.homeScore) return { swing: 0, status: "tied", gain: entry.gain, loss: entry.loss, isPreSunday: entry.isPreSunday };
 
 		const teamLower = teamName.toLowerCase();
 		const isAway = live.awayTeam.toLowerCase().includes(teamLower);
@@ -723,23 +808,45 @@ module.exports = NodeHelper.create({
 		const swing = isLeading ? entry.gain : entry.loss;
 		const status = live.state === "post" ? (isLeading ? "won" : "lost") : (isLeading ? "winning" : "losing");
 
-		return { swing, status, gain: entry.gain, loss: entry.loss };
+		return { swing, status, gain: entry.gain, loss: entry.loss, isPreSunday: entry.isPreSunday };
 	},
 
-	// Pending: show both possible outcomes ("+4/-2"). Decided (live-leading or
-	// final), tied, or bye: show just the one actual/current value.
+	// Pending or still-live (winning/losing): show both possible outcomes,
+	// not just whichever one currently applies - a live game can still
+	// swing the other way before it's final. The one that ISN'T how the
+	// game presently stands gets a dimming class rather than disappearing,
+	// so it's clear it's not locked in yet. Decided (won/lost) or tied: show
+	// just the one real, final value.
 	formatPickPoints (outcome, multiplier) {
 		if (outcome.status === "bye") return "";
-		if (outcome.status === "pending") {
-			if (outcome.gain === null) return "";
-			return `+${outcome.gain * multiplier}/${outcome.loss * multiplier}`;
-		}
 		if (outcome.status === "tied") return "0";
-		const swing = outcome.swing * multiplier;
-		return swing >= 0 ? `+${swing}` : `${swing}`;
+		if (outcome.status === "won" || outcome.status === "lost") {
+			const swing = outcome.swing * multiplier;
+			return swing >= 0 ? `+${swing}` : `${swing}`;
+		}
+		if (outcome.gain === null) return "";
+		const gainText = `+${outcome.gain * multiplier}`;
+		const lossText = `${outcome.loss * multiplier}`;
+		if (outcome.status === "winning") return `${gainText}/<span class="pool-pick-inactive">${lossText}</span>`;
+		if (outcome.status === "losing") return `<span class="pool-pick-inactive">${gainText}</span>/${lossText}`;
+		return `${gainText}/${lossText}`;
 	},
 
 	computeProjections (divisions, games, liveGames) {
+		// total/projectedTotal only count swing from picks whose game has
+		// actually finished ("won"/"lost"/"tied"), not ones still live
+		// ("winning"/"losing"), so neither fluctuates on every scoring play
+		// before a result is actually final. The individual pick display
+		// (pickPoints1/2) still shows live status regardless.
+		//
+		// A pre-Sunday (e.g. Thursday night) pick that's already final is a
+		// special case: the spreadsheet screenshot was taken (and the email
+		// sent) AFTER that game already finished, so the sender's own Total
+		// already bakes it in. "Tot" is meant to show points going into this
+		// week, so that baked-in swing is backed back out of total here -
+		// then it's added into projectedTotal the same as any other
+		// completed game this week, alongside our own live tracking.
+		const isFinalOutcome = (status) => status === "won" || status === "lost" || status === "tied";
 		const projected = divisions.map((div) => ({
 			...div,
 			rows: div.rows
@@ -748,12 +855,16 @@ module.exports = NodeHelper.create({
 					const outcome2 = this.computePickOutcome(row.pick2Team, games, liveGames);
 					const mult1 = row.pick1DoubleDown ? 2 : 1;
 					const mult2 = row.pick2DoubleDown ? 2 : 1;
-					const swing1 = outcome1.swing * mult1;
-					const swing2 = outcome2.swing * mult2;
-					const projectedTotal = row.total + swing1 + swing2;
+					const swing1 = isFinalOutcome(outcome1.status) ? outcome1.swing * mult1 : 0;
+					const swing2 = isFinalOutcome(outcome2.status) ? outcome2.swing * mult2 : 0;
+					const bakedIn = (outcome1.isPreSunday ? swing1 : 0) + (outcome2.isPreSunday ? swing2 : 0);
+					const total = row.rawTotal - bakedIn;
+					const projectedTotal = total + swing1 + swing2;
 
 					return {
 						...row,
+						total,
+						totalClass: total < 0 ? "pool-negative" : "pool-positive",
 						pick1Status: outcome1.status,
 						pick2Status: outcome2.status,
 						pickPoints1: this.formatPickPoints(outcome1, mult1),
@@ -766,6 +877,7 @@ module.exports = NodeHelper.create({
 		}));
 
 		this.computeConferenceRanks(projected);
+		this.markBiggestLosers(projected);
 
 		// Vacuously true for an empty games list (e.g. a season-announcement
 		// email with no games table yet) - nothing to poll for, so don't start
@@ -778,25 +890,62 @@ module.exports = NodeHelper.create({
 		return { projected, allGamesFinal };
 	},
 
-	// Ranks 1..N within each conference (NFC/AFC) by projectedTotal, pooling
-	// all 4 divisions per conference together - not just within one division.
-	// Top 7 (the real NFL playoff field size) display as a live seed 1-7;
-	// everyone else displays as "+N", how many spots past the last wildcard
-	// spot they currently are.
+	// This pool's own playoff format (not the real current NFL one): 4
+	// division champs + 4 wildcards per conference, 8 total. A division
+	// champ is guaranteed in regardless of their conference-wide rank (real
+	// NFL rules work the same way - a weak division's winner still gets in
+	// over a better non-champion elsewhere), so this finds each division's
+	// own top scorer first ("D"), then fills the 4 wildcard spots ("WC")
+	// from whoever's left in that conference, ranked by score. Everyone else
+	// shows "+N", how many spots past the last wildcard spot they currently
+	// are.
 	computeConferenceRanks (divisions) {
-		const PLAYOFF_SPOTS = 7;
+		const WILDCARD_SPOTS = 4;
 		const conferences = { NFC: [], AFC: [] };
 		for (const div of divisions) {
 			const conf = div.name.startsWith("NFC") ? "NFC" : "AFC";
-			conferences[conf].push(...div.rows);
+			for (const row of div.rows) {
+				conferences[conf].push({ row, division: div.name });
+			}
 		}
-		for (const rows of Object.values(conferences)) {
-			[...rows]
-				.sort((a, b) => b.projectedTotal - a.projectedTotal)
-				.forEach((row, idx) => {
-					row.confRank = idx + 1;
-					row.seedDisplay = row.confRank <= PLAYOFF_SPOTS ? String(row.confRank) : `+${row.confRank - PLAYOFF_SPOTS}`;
-				});
+
+		for (const entries of Object.values(conferences)) {
+			const byDivision = new Map();
+			for (const entry of entries) {
+				if (!byDivision.has(entry.division)) byDivision.set(entry.division, []);
+				byDivision.get(entry.division).push(entry);
+			}
+
+			const champs = new Set();
+			for (const group of byDivision.values()) {
+				const champ = [...group].sort((a, b) => b.row.projectedTotal - a.row.projectedTotal)[0];
+				if (champ) champs.add(champ.row);
+			}
+
+			const nonChamps = entries
+				.map((entry) => entry.row)
+				.filter((row) => !champs.has(row))
+				.sort((a, b) => b.projectedTotal - a.projectedTotal);
+
+			for (const row of champs) {
+				row.seedDisplay = "D";
+			}
+			nonChamps.forEach((row, idx) => {
+				row.seedDisplay = idx < WILDCARD_SPOTS ? "WC" : `+${idx - WILDCARD_SPOTS + 1}`;
+			});
+		}
+	},
+
+	// Pool-wide (both conferences, all 8 divisions together) - the bottom 5
+	// scorers get "BL" ("Biggest Losers"), overriding whatever seed they'd
+	// otherwise show (though in practice a team scoring this low was never
+	// going to be a division champ or wildcard anyway).
+	markBiggestLosers (divisions) {
+		const BIGGEST_LOSERS_COUNT = 5;
+		const allRows = divisions.flatMap((div) => div.rows);
+		const losers = [...allRows].sort((a, b) => a.projectedTotal - b.projectedTotal).slice(0, BIGGEST_LOSERS_COUNT);
+		for (const row of losers) {
+			row.seedDisplay = "BL";
 		}
 	},
 
