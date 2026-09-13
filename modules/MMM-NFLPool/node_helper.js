@@ -46,7 +46,7 @@ const POOL_SCHEMA = {
 						type: "ARRAY",
 						items: {
 							type: "OBJECT",
-							required: ["seed", "name", "total", "diff", "r3", "r3Diff", "pick1", "pick1Extra", "pick2", "pick2Extra"],
+							required: ["seed", "name", "total", "diff", "r3", "r3Diff", "pick1", "pick2"],
 							properties: {
 								seed: { type: "STRING" },
 								name: { type: "STRING" },
@@ -55,9 +55,7 @@ const POOL_SCHEMA = {
 								r3: { type: "INTEGER" },
 								r3Diff: { type: "INTEGER" },
 								pick1: { type: "STRING" },
-								pick1Extra: { type: "STRING" },
-								pick2: { type: "STRING" },
-								pick2Extra: { type: "STRING" }
+								pick2: { type: "STRING" }
 							}
 						}
 					}
@@ -92,7 +90,7 @@ const USER_PROMPT = [
 	"",
 	"For the seed cell, transcribe exactly what is shown, or an empty string if the cell is blank - do not guess or normalize the code.",
 	"",
-	"For the two Pick columns, transcribe the team name exactly as written (or \"-bye-\" literally if that's what's shown). Occasionally there is a small extra value in or immediately before a pick cell (e.g. a lone number like \"1\") - capture that in the matching pick1Extra/pick2Extra field as a string, and use an empty string when there is no such extra value.",
+	"For the two Pick columns, transcribe the team name exactly as written (or \"-bye-\" literally if that's what's shown).",
 	"",
 	"Extract every row in every one of the 8 division sections - do not omit any player, and do not merge or reorder rows. If the image shows a week or round label (e.g. \"Week 13\" or \"Wild Card\"), put it in weekLabel; otherwise leave weekLabel as an empty string.",
 	"",
@@ -671,10 +669,6 @@ module.exports = NodeHelper.create({
 
 	annotateRows (divisions, userName) {
 		const nameLower = userName.trim().toLowerCase();
-		const hasExtra = (extra) => {
-			const trimmed = (extra || "").trim();
-			return trimmed !== "" && trimmed !== "-";
-		};
 		const isDoubleDown = (pick) => !!pick && pick !== "-bye-" && pick === pick.toUpperCase() && pick !== pick.toLowerCase();
 		// The spreadsheet sometimes marks a player's name with a trailing
 		// symbol (*, #, +, etc. - whatever this pool's own convention is for
@@ -702,8 +696,6 @@ module.exports = NodeHelper.create({
 				pick2Team: row.pick2 || "",
 				pick1DoubleDown: isDoubleDown(row.pick1),
 				pick2DoubleDown: isDoubleDown(row.pick2),
-				pickDisplay1: hasExtra(row.pick1Extra) ? `${row.pick1Extra.trim()} ${row.pick1}` : (row.pick1 || ""),
-				pickDisplay2: hasExtra(row.pick2Extra) ? `${row.pick2Extra.trim()} ${row.pick2}` : (row.pick2 || ""),
 				isUser: !!(row.name && row.name.toLowerCase().includes(nameLower))
 			}))
 		}));
