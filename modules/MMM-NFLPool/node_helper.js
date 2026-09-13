@@ -574,11 +574,19 @@ module.exports = NodeHelper.create({
 			return trimmed !== "" && trimmed !== "-";
 		};
 		const isDoubleDown = (pick) => !!pick && pick !== "-bye-" && pick === pick.toUpperCase() && pick !== pick.toLowerCase();
+		// The spreadsheet sometimes marks a player's name with a trailing
+		// symbol (*, #, +, etc. - whatever this pool's own convention is for
+		// it) - vision extraction faithfully includes it in the name text
+		// itself, so it needs stripping here rather than showing up literally
+		// on screen. Keeps letters/spaces/apostrophes/hyphens/periods (real
+		// names can have all of those - "Mary-Jane O'Brien Jr."), strips
+		// anything else.
+		const cleanName = (name) => (name || "").replace(/[^a-zA-Z\s'.-]/g, "").replace(/\s+/g, " ").trim();
 		return divisions.map((div) => ({
 			name: div.name,
 			rows: (div.rows || []).map((row) => ({
 				seed: row.seed || "",
-				name: row.name || "",
+				name: cleanName(row.name),
 				total: row.total,
 				totalClass: row.total < 0 ? "pool-negative" : "pool-positive",
 				diff: row.diff,
