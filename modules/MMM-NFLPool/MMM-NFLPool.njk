@@ -16,9 +16,9 @@
           <td class="pool-name">{{ row.name }}</td>
           <td class="pool-num {{ row.totalClass }}">{{ row.total }}</td>
           <td class="pool-picks">
-            <span class="pool-pick pool-pick-{{ row.pick1Status }}">{{ row.pickDisplay1 }} {{ row.pickPoints1 }}{% if row.pick1DoubleDown %}<sup class="pool-dd">2x</sup>{% endif %}</span>
+            <span class="pool-pick pool-pick-{{ row.pick1Status }}">{{ row.pickDisplay1 }}{% if row.pickPoints1 %}&nbsp;({{ row.pickPoints1 }}){% endif %}{% if row.pick1DoubleDown %}<sup class="pool-dd">2x</sup>{% endif %}</span>
             /
-            <span class="pool-pick pool-pick-{{ row.pick2Status }}">{{ row.pickDisplay2 }} {{ row.pickPoints2 }}{% if row.pick2DoubleDown %}<sup class="pool-dd">2x</sup>{% endif %}</span>
+            <span class="pool-pick pool-pick-{{ row.pick2Status }}">{{ row.pickDisplay2 }}{% if row.pickPoints2 %}&nbsp;({{ row.pickPoints2 }}){% endif %}{% if row.pick2DoubleDown %}<sup class="pool-dd">2x</sup>{% endif %}</span>
           </td>
           <td class="pool-num {{ row.projectedTotalClass }}">{{ row.projectedTotal }}</td>
         </tr>
