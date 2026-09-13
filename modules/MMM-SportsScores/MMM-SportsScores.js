@@ -118,11 +118,22 @@ Module.register("MMM-SportsScores", {
 	getTemplateData () {
 		const targetDate = moment().add(this.dayOffset, "days");
 
+		// favoriteIsHome/favoriteIsAway are only ever set by the separate
+		// FETCH_FAVORITES round trip (for pro sports, fetchScores never sets
+		// them at all) - that request is deliberately staggered ~800ms behind
+		// fetchScores, so there's a real window where this list has already
+		// rendered a favorite team's game, unhighlighted, before favorites
+		// catches up. Name-matching against config (like standings already
+		// does) has no such network dependency, so OR-ing it in makes the
+		// highlight correct as soon as the games data itself arrives.
+		const favoriteNames = this.getFavoriteNameSubstrings();
+		const isFavoriteName = (name) => favoriteNames.some((f) => (name || "").toLowerCase().includes(f));
+
 		const favorites = this.favoriteGames.map((game) => {
 			const g = {
 				...game,
-				homeTeam: { ...game.homeTeam, isFavorite: game.favoriteIsHome },
-				awayTeam: { ...game.awayTeam, isFavorite: game.favoriteIsAway }
+				homeTeam: { ...game.homeTeam, isFavorite: game.favoriteIsHome || isFavoriteName(game.homeTeam.name) },
+				awayTeam: { ...game.awayTeam, isFavorite: game.favoriteIsAway || isFavoriteName(game.awayTeam.name) }
 			};
 
 			if (g.state === "post" || g.state === "in") {
@@ -148,13 +159,8 @@ Module.register("MMM-SportsScores", {
 		const games = this.games.filter((game) => !favoriteIds.has(game.id)).map((game) => {
 			const g = {
 				...game,
-				// The NCAAF/NCAAB tabs only ever show tracked teams' own games
-				// (see node_helper's college-teams-aggregate provider), which
-				// already carry these fields from the same parsers used for
-				// favorites - other sports' games just get isFavorite:
-				// undefined here, same as before.
-				homeTeam: { ...game.homeTeam, isFavorite: game.favoriteIsHome },
-				awayTeam: { ...game.awayTeam, isFavorite: game.favoriteIsAway }
+				homeTeam: { ...game.homeTeam, isFavorite: game.favoriteIsHome || isFavoriteName(game.homeTeam.name) },
+				awayTeam: { ...game.awayTeam, isFavorite: game.favoriteIsAway || isFavoriteName(game.awayTeam.name) }
 			};
 
 			if (g.state === "post" || g.state === "in") {
