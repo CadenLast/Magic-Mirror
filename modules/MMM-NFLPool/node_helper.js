@@ -716,6 +716,13 @@ module.exports = NodeHelper.create({
 			rows: (div.rows || []).map((row) => ({
 				seed: row.seed || "",
 				name: cleanName(row.name),
+				// rawTotal is exactly what the sender's sheet showed, and is
+				// never itself reassigned - recomputeProjections overwrites
+				// cache.data.divisions with computeProjections's own output
+				// every cycle, so a mutated "total" field would keep getting
+				// re-adjusted from an already-adjusted value on every
+				// subsequent tick instead of the real original.
+				rawTotal: row.total,
 				total: row.total,
 				totalClass: row.total < 0 ? "pool-negative" : "pool-positive",
 				diff: row.diff,
@@ -826,23 +833,20 @@ module.exports = NodeHelper.create({
 	},
 
 	computeProjections (divisions, games, liveGames) {
-		// row.total is left untouched here (still exactly what the pool
-		// starts the week with) - projectedTotal only counts swing from
-		// picks whose game has actually finished ("won"/"lost"/"tied"), not
-		// ones still live ("winning"/"losing"), so it doesn't fluctuate on
-		// every scoring play before a result is actually final. The
-		// individual pick display (pickPoints1/2) still shows live status -
-		// only this running total waits for a real result.
+		// total/projectedTotal only count swing from picks whose game has
+		// actually finished ("won"/"lost"/"tied"), not ones still live
+		// ("winning"/"losing"), so neither fluctuates on every scoring play
+		// before a result is actually final. The individual pick display
+		// (pickPoints1/2) still shows live status regardless.
 		//
 		// A pre-Sunday (e.g. Thursday night) pick that's already final is a
 		// special case: the spreadsheet screenshot was taken (and the email
-		// sent) AFTER that game already finished, so row.total on the
-		// sender's own sheet already includes it - adding its swing again
-		// here would double-count the same real result. Only a
-		// still-live/pending pre-Sunday pick needs no special handling
-		// (nothing to double-count yet).
+		// sent) AFTER that game already finished, so the sender's own Total
+		// already bakes it in. "Tot" is meant to show points going into this
+		// week, so that baked-in swing is backed back out of total here -
+		// then it's added into projectedTotal the same as any other
+		// completed game this week, alongside our own live tracking.
 		const isFinalOutcome = (status) => status === "won" || status === "lost" || status === "tied";
-		const countsTowardTotal = (outcome) => isFinalOutcome(outcome.status) && !outcome.isPreSunday;
 		const projected = divisions.map((div) => ({
 			...div,
 			rows: div.rows
@@ -851,12 +855,16 @@ module.exports = NodeHelper.create({
 					const outcome2 = this.computePickOutcome(row.pick2Team, games, liveGames);
 					const mult1 = row.pick1DoubleDown ? 2 : 1;
 					const mult2 = row.pick2DoubleDown ? 2 : 1;
-					const swing1 = countsTowardTotal(outcome1) ? outcome1.swing * mult1 : 0;
-					const swing2 = countsTowardTotal(outcome2) ? outcome2.swing * mult2 : 0;
-					const projectedTotal = row.total + swing1 + swing2;
+					const swing1 = isFinalOutcome(outcome1.status) ? outcome1.swing * mult1 : 0;
+					const swing2 = isFinalOutcome(outcome2.status) ? outcome2.swing * mult2 : 0;
+					const bakedIn = (outcome1.isPreSunday ? swing1 : 0) + (outcome2.isPreSunday ? swing2 : 0);
+					const total = row.rawTotal - bakedIn;
+					const projectedTotal = total + swing1 + swing2;
 
 					return {
 						...row,
+						total,
+						totalClass: total < 0 ? "pool-negative" : "pool-positive",
 						pick1Status: outcome1.status,
 						pick2Status: outcome2.status,
 						pickPoints1: this.formatPickPoints(outcome1, mult1),
