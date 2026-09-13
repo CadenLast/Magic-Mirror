@@ -396,7 +396,7 @@ module.exports = NodeHelper.create({
 				const imagePart = this.findLargestImageAttachment(full.payload);
 				if (!imagePart) continue;
 
-				await this.processEmailImage(accessToken, meta, imagePart);
+				await this.processEmailImage(accessToken, meta, imagePart, full.payload);
 				return;
 			}
 		} catch (error) {
@@ -463,7 +463,61 @@ module.exports = NodeHelper.create({
 
 	// --- Email Processing ---
 
-	async processEmailImage (accessToken, meta, imagePart) {
+	// The per-game points table is also always present as plain, reliably
+	// structured text in the email body itself (confirmed across many weeks'
+	// worth of real emails) - unlike asking vision to read it off the
+	// screenshot, which can and does just come back empty. Text parsing is
+	// the primary source; vision's own games array (if any) is only a
+	// fallback for whenever this format itself changes.
+	findHtmlParts (payload) {
+		const results = [];
+		const visit = (part) => {
+			if (!part) return;
+			if (part.mimeType?.startsWith("text/html")) results.push(part);
+			if (part.parts) for (const child of part.parts) visit(child);
+		};
+		visit(payload);
+		return results;
+	},
+
+	stripHtmlToText (html) {
+		return html
+			.replace(/<style[\s\S]*?<\/style>/gi, "")
+			.replace(/<script[\s\S]*?<\/script>/gi, "")
+			.replace(/<[^>]+>/g, " ")
+			.replace(/&nbsp;/g, " ")
+			.replace(/&amp;/g, "&")
+			.replace(/\s+/g, " ")
+			.trim();
+	},
+
+	parseGamesFromEmailPayload (payload) {
+		const htmlParts = this.findHtmlParts(payload);
+		if (htmlParts.length === 0) return [];
+		const html = htmlParts.map((p) => Buffer.from(p.body?.data || "", "base64url").toString("utf8")).join("\n");
+		const text = this.stripHtmlToText(html);
+
+		// e.g. "49ers 3 -2 0 at Rams 2 -3 0" - team name, gain, loss, then a
+		// separate bold/starred number that isn't needed, "at", then the same
+		// for the home team. Section headers (THURSDAY NIGHT, SUNDAY EARLY,
+		// etc.) don't match this shape at all and are just skipped over.
+		const gameRegex = /(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}\s+at\s+(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}/g;
+		const games = [];
+		let match;
+		while ((match = gameRegex.exec(text))) {
+			games.push({
+				awayTeam: match[1],
+				awayGain: parseInt(match[2], 10),
+				awayLoss: parseInt(match[3], 10),
+				homeTeam: match[4],
+				homeGain: parseInt(match[5], 10),
+				homeLoss: parseInt(match[6], 10)
+			});
+		}
+		return games;
+	},
+
+	async processEmailImage (accessToken, meta, imagePart, emailPayload) {
 		try {
 			if (!this.config.geminiKey) {
 				throw new Error("Gemini API key not configured");
@@ -479,7 +533,8 @@ module.exports = NodeHelper.create({
 
 			const { weekLabel, week } = this.resolveWeek(meta.subject, result.weekLabel);
 			const userName = this.config.userName || "Caden";
-			const games = result.games || [];
+			const textGames = this.parseGamesFromEmailPayload(emailPayload);
+			const games = textGames.length > 0 ? textGames : (result.games || []);
 			const rawDivisions = this.annotateRows(result.divisions || [], userName);
 
 			this.cache.lastProcessedMessageId = meta.id;
