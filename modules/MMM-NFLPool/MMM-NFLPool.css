@@ -6,7 +6,7 @@
 /* Reserve height so the layout doesn't shift while loading (home division
    pinned above a scrollable list of the other 7). */
 .MMM-NFLPool .module-content {
-  min-height: 460px;
+  min-height: 500px;
 }
 
 .pool-wrapper {
@@ -40,21 +40,25 @@
   background: rgba(52, 152, 219, 0.12);
 }
 
-.pool-division-name {
+.pool-header-row .pool-division-name {
+  /* .pool-rank's fixed 20px width is meant for the narrow rank column alone -
+     override it here since this header cell spans rank + name via colspan. */
+  width: auto;
   font-size: 0.8em;
+  font-weight: 400;
   color: var(--color-text);
   opacity: 0.8;
-  margin: 0 0 4px;
+  text-align: left;
 }
 
-.pool-division-home .pool-division-name {
+.pool-division-home .pool-header-row .pool-division-name {
   color: #3498db;
   opacity: 1;
   font-weight: 600;
 }
 
 .pool-others-list {
-  max-height: 280px;
+  max-height: 320px;
   overflow-y: auto;
   scrollbar-width: none;
 }
