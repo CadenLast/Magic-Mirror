@@ -11,6 +11,26 @@ const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta/models
 
 const DIVISIONS = ["NFCEast", "NFCNorth", "NFCSouth", "NFCWest", "AFCEast", "AFCNorth", "AFCSouth", "AFCWest"];
 
+// One-time historical seed for the season point-differential tiebreaker,
+// covering 2026 weeks 1-2 (before this tracking feature existed). Derived by
+// manually running the real Gemini vision parse against each week's actual
+// pool email and matching picks against real final scores, OT-zeroed the
+// same way computePickMargin does. Applied once by applySeasonDiffSeed - see
+// there for why this can't clobber real progress on a restart.
+const SEASON_DIFF_SEED_2026 = {
+	throughMessageId: "1a0bfae4eb1b3fd9",
+	diff: {
+		baksi: 38, mcgrath: 45, jackson: -2, caden: 11, poppy: 0,
+		cassity: 35, rock: 2, cove: 4, lyla: -27, kasner: -22,
+		harrison: -1, ay: -23, ina: -32, kistler: 6, wesley: -42,
+		gdoc: 54, fuhrman: -10, jrock: 47, bcim: -10, rohde: -10,
+		rdoc: 12, gross: -2, cardinali: -12, cattalo: 33, stumpf: -6,
+		rsmith: 51, nelson: -1, rager: -52, hawkeye: 5, bowles: 3,
+		"t-bone": 27, lynch: 15, gillig: -18, brady: 0, stri: -13,
+		sully: 27, groshek: 2, atkinson: 5, waters: -22, heatwave: -11
+	}
+};
+
 const MAX_FAIL_RETRIES = 5;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
@@ -102,9 +122,21 @@ module.exports = NodeHelper.create({
 		Log.log(`Starting node helper for: ${this.name}`);
 		this.tokens = null;
 		this.cache = this.loadCache();
+		this.applySeasonDiffSeed();
 		this.routesRegistered = false;
 		this.scanTimer = null;
 		this.retryStatus = null;
+	},
+
+	// Applies the hardcoded historical seed exactly once - guarded on
+	// seasonDiffLockedMessageId never having been set at all, so a restart
+	// after real weeks have already locked in can't stomp on that progress.
+	applySeasonDiffSeed () {
+		if (this.cache.seasonDiffLockedMessageId) return;
+		this.cache.seasonDiff = { ...SEASON_DIFF_SEED_2026.diff };
+		this.cache.seasonDiffLockedMessageId = SEASON_DIFF_SEED_2026.throughMessageId;
+		this.cache.seasonDiffLockedAt = new Date().toISOString();
+		this.saveCache();
 	},
 
 	socketNotificationReceived (notification, payload) {
@@ -333,7 +365,10 @@ module.exports = NodeHelper.create({
 				lastError: null,
 				lastErrorAt: null,
 				lastFailedMessageId: null,
-				failCount: 0
+				failCount: 0,
+				seasonDiff: {},
+				seasonDiffLockedMessageId: null,
+				seasonDiffLockedAt: null
 			};
 		}
 	},
@@ -767,7 +802,8 @@ module.exports = NodeHelper.create({
 			homeTeam: game.home_team?.full_name || "",
 			awayScore: game.visitor_team_score,
 			homeScore: game.home_team_score,
-			state: game.status_state === "scheduled" ? "pre" : (game.status_state === "final" ? "post" : "in")
+			state: game.status_state === "scheduled" ? "pre" : (game.status_state === "final" ? "post" : "in"),
+			isOT: (game.status || "").includes("OT")
 		}));
 	},
 
@@ -775,6 +811,40 @@ module.exports = NodeHelper.create({
 		if (!teamName) return null;
 		const lower = teamName.toLowerCase();
 		return liveGames.find((g) => g.awayTeam.toLowerCase().includes(lower) || g.homeTeam.toLowerCase().includes(lower)) || null;
+	},
+
+	// Actual final score margin for a pick, independent of the pool's own
+	// gain/loss confidence points - used only for the season point-differential
+	// tiebreaker. null until the game is final. An OT game counts as 0
+	// regardless of who won, since a sudden-death score shouldn't swing the
+	// tiebreaker the way a full-game margin does.
+	computePickMargin (teamName, liveGames) {
+		if (!teamName || teamName === "-bye-") return null;
+		const live = this.matchLiveGame(teamName, liveGames);
+		if (!live || live.state !== "post" || live.awayScore === null || live.homeScore === null) return null;
+		if (live.isOT) return 0;
+
+		const teamLower = teamName.toLowerCase();
+		const isAway = live.awayTeam.toLowerCase().includes(teamLower);
+		const teamScore = isAway ? live.awayScore : live.homeScore;
+		const oppScore = isAway ? live.homeScore : live.awayScore;
+		return teamScore - oppScore;
+	},
+
+	// Standings sort: projectedTotal first, then the season point-differential
+	// tiebreaker when two players are tied on total. Descending (best first) -
+	// callers that need worst-first just flip the argument order.
+	compareStanding (a, b) {
+		if (b.projectedTotal !== a.projectedTotal) return b.projectedTotal - a.projectedTotal;
+		return b.seasonDiffTotal - a.seasonDiffTotal;
+	},
+
+	// cache.seasonDiff's key for a player - normalized so the same person
+	// doesn't silently fork into two tracked totals when vision OCRs their
+	// name with different capitalization week to week (seen in practice:
+	// "Jrock" one week, "JRock" the next).
+	seasonDiffKey (name) {
+		return (name || "").trim().toLowerCase();
 	},
 
 	findGameEntry (teamName, games) {
@@ -869,6 +939,11 @@ module.exports = NodeHelper.create({
 					const total = row.rawTotal - bakedIn;
 					const projectedTotal = total + swing1 + swing2;
 
+					const margin1 = this.computePickMargin(row.pick1Team, liveGames);
+					const margin2 = this.computePickMargin(row.pick2Team, liveGames);
+					const weekDiff = (margin1 || 0) + (margin2 || 0);
+					const seasonDiffTotal = (this.cache.seasonDiff?.[this.seasonDiffKey(row.name)] || 0) + weekDiff;
+
 					return {
 						...row,
 						total,
@@ -878,10 +953,11 @@ module.exports = NodeHelper.create({
 						pickPoints1: this.formatPickPoints(outcome1, mult1),
 						pickPoints2: this.formatPickPoints(outcome2, mult2),
 						projectedTotal,
-						projectedTotalClass: projectedTotal < 0 ? "pool-negative" : "pool-positive"
+						projectedTotalClass: projectedTotal < 0 ? "pool-negative" : "pool-positive",
+						seasonDiffTotal
 					};
 				})
-				.sort((a, b) => b.projectedTotal - a.projectedTotal)
+				.sort((a, b) => this.compareStanding(a, b))
 		}));
 
 		this.computeConferenceRanks(projected);
@@ -926,14 +1002,14 @@ module.exports = NodeHelper.create({
 
 			const champs = new Set();
 			for (const group of byDivision.values()) {
-				const champ = [...group].sort((a, b) => b.row.projectedTotal - a.row.projectedTotal)[0];
+				const champ = [...group].sort((a, b) => this.compareStanding(a.row, b.row))[0];
 				if (champ) champs.add(champ.row);
 			}
 
 			const nonChamps = entries
 				.map((entry) => entry.row)
 				.filter((row) => !champs.has(row))
-				.sort((a, b) => b.projectedTotal - a.projectedTotal);
+				.sort((a, b) => this.compareStanding(a, b));
 
 			for (const row of champs) {
 				row.seedDisplay = "D";
@@ -951,7 +1027,7 @@ module.exports = NodeHelper.create({
 	markBiggestLosers (divisions) {
 		const BIGGEST_LOSERS_COUNT = 5;
 		const allRows = divisions.flatMap((div) => div.rows);
-		const losers = [...allRows].sort((a, b) => a.projectedTotal - b.projectedTotal).slice(0, BIGGEST_LOSERS_COUNT);
+		const losers = [...allRows].sort((a, b) => this.compareStanding(b, a)).slice(0, BIGGEST_LOSERS_COUNT);
 		for (const row of losers) {
 			row.seedDisplay = "BL";
 		}
@@ -978,6 +1054,7 @@ module.exports = NodeHelper.create({
 			this.sendPoolData();
 
 			if (allGamesFinal) {
+				this.lockInSeasonDiff(projected);
 				if (this.liveScoreTimer) clearInterval(this.liveScoreTimer);
 				this.liveScoreTimer = null;
 			} else if (!this.liveScoreTimer) {
@@ -989,11 +1066,34 @@ module.exports = NodeHelper.create({
 		}
 	},
 
+	// Locks each player's finalized point-differential for this week into the
+	// running season total, once every game is decided. Guarded by message id
+	// (not week number) so it works even for playoff week labels that don't
+	// parse to a plain numeric week, and stays idempotent across restarts/
+	// re-ticks. A 150+ day gap since the last lock means the offseason has
+	// passed and this is a new season, so the running total resets instead of
+	// carrying over from the year before.
+	lockInSeasonDiff (divisions) {
+		if (this.cache.seasonDiffLockedMessageId === this.cache.lastProcessedMessageId) return;
+
+		const gapDays = this.cache.seasonDiffLockedAt ? (Date.now() - new Date(this.cache.seasonDiffLockedAt)) / 86400000 : 0;
+		if (gapDays > 150) this.cache.seasonDiff = {};
+
+		this.cache.seasonDiff = this.cache.seasonDiff || {};
+		for (const div of divisions) {
+			for (const row of div.rows) {
+				this.cache.seasonDiff[this.seasonDiffKey(row.name)] = row.seasonDiffTotal;
+			}
+		}
+		this.cache.seasonDiffLockedMessageId = this.cache.lastProcessedMessageId;
+		this.cache.seasonDiffLockedAt = new Date().toISOString();
+	},
+
 	computeHomeStanding (divisions) {
 		for (const div of divisions) {
 			const idx = div.rows.findIndex((r) => r.isUser);
 			if (idx === -1) continue;
-			const sorted = [...div.rows].sort((a, b) => b.projectedTotal - a.projectedTotal);
+			const sorted = [...div.rows].sort((a, b) => this.compareStanding(a, b));
 			const rank = sorted.findIndex((r) => r.isUser) + 1;
 			return { homeDivisionName: div.name, rank, ofCount: div.rows.length };
 		}
