@@ -37,7 +37,7 @@ let config = {
 	ignoreXOriginHeader: true,
 	ignoreContentSecurityPolicy: true,
 	cursorStyle: "${CURSOR_STYLE}",
-	textShadow: true,
+	textShadow: false,
 	electronOptions: {
 		x: 1728,
 		y: 0,

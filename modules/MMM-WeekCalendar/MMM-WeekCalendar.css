@@ -13,7 +13,7 @@
 .week-nav {
   font-size: 2em;
   padding: 0 10px;
-  color: #fff;
+  color: var(--color-text-bright);
   cursor: pointer;
   transition: opacity 0.3s ease;
   user-select: none;
@@ -100,11 +100,11 @@
 }
 
 .week-weather-high {
-  color: #fff;
+  color: var(--color-text-bright);
 }
 
 .week-weather-low {
-  color: #fff;
+  color: var(--color-text);
   opacity: 0.4;
   margin-left: 5px;
 }
@@ -141,7 +141,7 @@
   text-align: center;
   font-size: 40px;
   line-height: 0.5;
-  color: #fff;
+  color: var(--color-text);
   opacity: 0;
   transition: opacity 0.3s ease;
   transform: rotate(-90deg);
@@ -168,7 +168,7 @@
 }
 
 .week-event-title {
-  color: #fff;
+  color: var(--color-text);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

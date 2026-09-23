@@ -30,7 +30,7 @@
 .balanced-news-arrow {
   font-size: 2em;
   padding: 0 15px;
-  color: #fff;
+  color: var(--color-text-bright);
   opacity: 0;
   cursor: pointer;
   transition: opacity 0.3s ease;

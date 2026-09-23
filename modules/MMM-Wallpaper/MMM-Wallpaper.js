@@ -11,7 +11,14 @@ Module.register("MMM-Wallpaper", {
 		this.wallpapers = [];
 		this.current = 0;
 		this.pickerVisible = false;
+		this.currentImage = null;
 		this.sendSocketNotification("GET_WALLPAPERS");
+	},
+
+	notificationReceived (notification) {
+		if (notification === "DOM_OBJECTS_CREATED") {
+			this.applyContrast();
+		}
 	},
 
 	socketNotificationReceived (notification, payload) {
@@ -123,8 +130,87 @@ Module.register("MMM-Wallpaper", {
 
 	applyWallpaper () {
 		const file = this.wallpapers[this.current];
-		document.documentElement.style.background =
-			`url("config/darkwallpapers/${file}") center / cover no-repeat`;
+		const url = `config/darkwallpapers/${file}`;
+		document.documentElement.style.background = `url("${url}") center / cover no-repeat`;
+		this.adaptTextColor(url);
+	},
+
+	adaptTextColor (url) {
+		const img = new Image();
+		img.onload = () => {
+			this.currentImage = img;
+			this.applyContrast();
+		};
+		img.src = url;
+	},
+
+	// Samples the wallpaper region actually behind each module (mapped through the same
+	// "cover" scale/crop the CSS background uses) instead of one whole-image average, since
+	// a single dark/light photo can still have bright or dark patches under different modules.
+	applyContrast () {
+		const img = this.currentImage;
+		if (!img) {
+			return;
+		}
+
+		this.setColors(document.documentElement.style, this.sampleLuminance(img, 0, 0, img.naturalWidth, img.naturalHeight));
+
+		const vw = window.innerWidth;
+		const vh = window.innerHeight;
+		if (!vw || !vh) {
+			return;
+		}
+		const scale = Math.max(vw / img.naturalWidth, vh / img.naturalHeight);
+		const offsetX = (vw - img.naturalWidth * scale) / 2;
+		const offsetY = (vh - img.naturalHeight * scale) / 2;
+
+		document.querySelectorAll(".module").forEach((moduleEl) => {
+			const rect = moduleEl.getBoundingClientRect();
+			if (rect.width <= 0 || rect.height <= 0) {
+				return;
+			}
+
+			const luminance = this.sampleLuminance(
+				img,
+				(rect.left - offsetX) / scale,
+				(rect.top - offsetY) / scale,
+				rect.width / scale,
+				rect.height / scale
+			);
+			if (luminance !== null) {
+				this.setColors(moduleEl.style, luminance);
+			}
+		});
+	},
+
+	sampleLuminance (img, sx, sy, sw, sh, size = 24) {
+		sx = Math.max(0, Math.min(sx, img.naturalWidth));
+		sy = Math.max(0, Math.min(sy, img.naturalHeight));
+		sw = Math.max(1, Math.min(sw, img.naturalWidth - sx));
+		sh = Math.max(1, Math.min(sh, img.naturalHeight - sy));
+
+		const canvas = document.createElement("canvas");
+		canvas.width = size;
+		canvas.height = size;
+		const ctx = canvas.getContext("2d");
+		try {
+			ctx.drawImage(img, sx, sy, sw, sh, 0, 0, size, size);
+			const data = ctx.getImageData(0, 0, size, size).data;
+			let total = 0;
+			for (let i = 0; i < data.length; i += 4) {
+				total += 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+			}
+			return total / (data.length / 4);
+		} catch {
+			return null;
+		}
+	},
+
+	setColors (styleTarget, avgLuminance) {
+		const isBright = avgLuminance > 140;
+		styleTarget.setProperty("--color-text", isBright ? "#111" : "#fff");
+		styleTarget.setProperty("--color-text-bright", isBright ? "#000" : "#fff");
+		styleTarget.setProperty("--mm-wallpaper-shadow", isBright ? "rgba(255, 255, 255, 0.85)" : "rgba(0, 0, 0, 0.85)");
 	},
 
 	getDom () {

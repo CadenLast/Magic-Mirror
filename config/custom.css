@@ -1,7 +1,13 @@
 html {
   height: 100vh;
+  --mm-wallpaper-shadow: rgba(0, 0, 0, 0.85);
 }
 
 body {
   background: transparent !important;
+}
+
+body,
+.module {
+  text-shadow: 0 0 6px var(--mm-wallpaper-shadow), 0 0 14px var(--mm-wallpaper-shadow), 0 1px 3px var(--mm-wallpaper-shadow);
 }

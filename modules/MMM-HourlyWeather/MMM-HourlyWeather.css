@@ -6,7 +6,7 @@
 
 .hourly-weather-wrapper {
   font-size: 19px;
-  color: #fff;
+  color: var(--color-text);
 }
 
 .current-weather {
