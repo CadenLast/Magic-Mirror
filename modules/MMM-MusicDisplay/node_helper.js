@@ -72,7 +72,8 @@ module.exports = NodeHelper.create({
 				this.sendSocketNotification("RECENT_TRACKS", this.shuffleArray(tracks.slice()));
 			}
 		} catch (e) {
-			Log.error(`${this.name}: failed to fetch Spotify new releases - ${e.message}`);
+			const cause = e.cause ? ` (cause: ${e.cause.message || e.cause})` : "";
+			Log.error(`${this.name}: failed to fetch Spotify new releases - ${e.message}${cause}`);
 		}
 	},
 
