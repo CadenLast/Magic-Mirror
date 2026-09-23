@@ -90,17 +90,17 @@ let config = {
 				timeFormat: 12
 			}
 		},
-		// {
-		// 	module: "MMM-Radar",
-		// 	position: "top_left",
-		// 	config: {
-		// 		lat: 41.7268,
-		// 		lon: -93.6043,
-		// 		zoom: 6.5,
-		// 		width: "480px",
-		// 		height: "360px"
-		// 	}
-		// },
+		{
+			module: "MMM-Radar",
+			position: "top_left",
+			config: {
+				lat: 41.7268,
+				lon: -93.6043,
+				zoom: 6.5,
+				width: "480px",
+				height: "360px"
+			}
+		},
 		{
 			module: "MMM-WeekCalendar",
 			position: "bottom_bar",
@@ -134,44 +134,44 @@ let config = {
 				emailScanInterval: 4 * 60 * 60 * 1000
 			}
 		},
-		// {
-		// 	module: "MMM-SportsScores",
-		// 	position: "top_left",
-		// 	config: {
-		// 		// NFL and NBA are on balldontlie.io (a licensed API with a real,
-		// 		// published rate limit - see config/keys.js, gitignored). MLB/NHL use
-		// 		// their own official free APIs. NCAAF/NCAAB don't use ESPN at all:
-		// 		// "games" is the union of collegeTeams' own schedules below, and
-		// 		// "standings" is the AP Top 25 poll via CFBD/CBBD (cfbdKey below).
-		// 		sports: [
-		// 			{ label: "NFL", icon: "🏈", sport: "football", league: "nfl" },
-		// 			{ label: "NBA", icon: "🏀", sport: "basketball", league: "nba" },
-		// 			{ label: "MLB", icon: "⚾", sport: "baseball", league: "mlb" },
-		// 			{ label: "NHL", icon: "🏒", sport: "hockey", league: "nhl" },
-		// 			{ label: "NCAAF", icon: "🏈", sport: "football", league: "college-football" },
-		// 			{ label: "NCAAB", icon: "🏀", sport: "basketball", league: "mens-college-basketball" }
-		// 		],
-		// 		favoriteTeams: [
-		// 			{ team: "Bears", sport: "football", league: "nfl" },
-		// 			{ team: "Buccaneers", sport: "football", league: "nfl" },
-		// 			{ team: "Bulls", sport: "basketball", league: "nba" },
-		// 			{ team: "Cubs", sport: "baseball", league: "mlb" }
-		// 		],
-		// 		// Pulled directly from these teams' own athletics department
-		// 		// sites - see COLLEGE_TEAM_SOURCES in node_helper.js.
-		// 		collegeTeams: [
-		// 			{ sport: "football", team: "Iowa" },
-		// 			{ sport: "football", team: "Iowa State" },
-		// 			{ sport: "basketball", team: "Iowa" },
-		// 			{ sport: "basketball", team: "Iowa State" },
-		// 			{ sport: "basketball", team: "Northern Iowa" },
-		// 			{ sport: "basketball", team: "Creighton" },
-		// 			{ sport: "basketball", team: "Drake" }
-		// 		],
-		// 		balldontlieKeys: keys.balldontlie,
-		// 		cfbdKey: keys.cfbd
-		// 	}
-		// },
+		{
+			module: "MMM-SportsScores",
+			position: "top_left",
+			config: {
+				// NFL and NBA are on balldontlie.io (a licensed API with a real,
+				// published rate limit - see config/keys.js, gitignored). MLB/NHL use
+				// their own official free APIs. NCAAF/NCAAB don't use ESPN at all:
+				// "games" is the union of collegeTeams' own schedules below, and
+				// "standings" is the AP Top 25 poll via CFBD/CBBD (cfbdKey below).
+				sports: [
+					{ label: "NFL", icon: "🏈", sport: "football", league: "nfl" },
+					{ label: "NBA", icon: "🏀", sport: "basketball", league: "nba" },
+					{ label: "MLB", icon: "⚾", sport: "baseball", league: "mlb" },
+					{ label: "NHL", icon: "🏒", sport: "hockey", league: "nhl" },
+					{ label: "NCAAF", icon: "🏈", sport: "football", league: "college-football" },
+					{ label: "NCAAB", icon: "🏀", sport: "basketball", league: "mens-college-basketball" }
+				],
+				favoriteTeams: [
+					{ team: "Bears", sport: "football", league: "nfl" },
+					{ team: "Buccaneers", sport: "football", league: "nfl" },
+					{ team: "Bulls", sport: "basketball", league: "nba" },
+					{ team: "Cubs", sport: "baseball", league: "mlb" }
+				],
+				// Pulled directly from these teams' own athletics department
+				// sites - see COLLEGE_TEAM_SOURCES in node_helper.js.
+				collegeTeams: [
+					{ sport: "football", team: "Iowa" },
+					{ sport: "football", team: "Iowa State" },
+					{ sport: "basketball", team: "Iowa" },
+					{ sport: "basketball", team: "Iowa State" },
+					{ sport: "basketball", team: "Northern Iowa" },
+					{ sport: "basketball", team: "Creighton" },
+					{ sport: "basketball", team: "Drake" }
+				],
+				balldontlieKeys: keys.balldontlie,
+				cfbdKey: keys.cfbd
+			}
+		},
 		{
 			module: "MMM-MusicDisplay",
 			position: "top_left",
