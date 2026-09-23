@@ -5,7 +5,10 @@ Module.register("MMM-MusicDisplay", {
 		showAlbumArt: true,
 		artSize: 144,
 		rotationSpeed: 8000,
-		favorites: [],
+		spotify: null,
+		newReleasesCountry: "US",
+		newReleasesLimit: 20,
+		newReleasesRefreshHours: 12,
 	},
 
 	start: function () {
