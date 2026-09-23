@@ -2,7 +2,13 @@ const NodeHelper = require("node_helper");
 const Log = require("logger");
 const fs = require("fs");
 const path = require("path");
+const dns = require("dns");
 const { exec } = require("child_process");
+
+// This host's network has flaky/unreachable IPv6 routes to some external
+// hosts (e.g. Spotify's API) - prefer IPv4 to avoid fetch() intermittently
+// racing a dead IPv6 path into an AggregateError.
+dns.setDefaultResultOrder("ipv4first");
 
 const DBUS_DEST = "org.gnome.ShairportSync";
 const DBUS_PATH = "/org/mpris/MediaPlayer2";
