@@ -177,19 +177,7 @@ let config = {
 			position: "top_left",
 			config: {
 				metadataPipe: "/tmp/shairport-sync-metadata",
-				favorites: [
-					{ artist: "Olivia Rodrigo", album: "GUTS" },
-					{ artist: "Olivia Rodrigo", album: "You Seem So Sad for a Girl in Love" },
-					{ artist: "My Chemical Romance", album: "The Black Parade" },
-					{ artist: "Harry Styles", album: "Kiss All The Time Disco Occasionally" },
-					{ artist: "Lorde", album: "Pure Heroine" },
-					{ artist: "Lorde", album: "Melodrama" },
-					{ artist: "Lorde", album: "Solar Power" },
-					{ artist: "Lorde", album: "Virgin" },
-					{ artist: "Linkin Park", album: "From Zero" },
-					{ artist: "Billie Eilish", album: "HIT ME HARD AND SOFT" },
-					{ artist: "Tears for Fears", album: "Songs from the Big Chair" },
-				],
+				spotify: keys.spotify,
 			}
 		},
 		{

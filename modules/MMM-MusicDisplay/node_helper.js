@@ -1,26 +1,19 @@
 const NodeHelper = require("node_helper");
+const Log = require("logger");
 const fs = require("fs");
-const https = require("https");
 const path = require("path");
 const { exec } = require("child_process");
 
 const DBUS_DEST = "org.gnome.ShairportSync";
 const DBUS_PATH = "/org/mpris/MediaPlayer2";
 const DBUS_IFACE = "org.mpris.MediaPlayer2.Player";
-const ART_CACHE_FILE = path.join(__dirname, "art_cache.json");
-
-let httpsAgent = null;
-try {
-	const caPath = path.join(require("os").homedir(), ".netskope-ca.pem");
-	const extra = fs.readFileSync(caPath, "utf8");
-	const tls = require("tls");
-	httpsAgent = new https.Agent({ ca: [...tls.rootCertificates, extra] });
-} catch (e) { /* no proxy cert */ }
+const NEW_RELEASES_CACHE_FILE = path.join(__dirname, "new_releases_cache.json");
+const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
+const SPOTIFY_NEW_RELEASES_URL = "https://api.spotify.com/v1/browse/new-releases";
 
 module.exports = NodeHelper.create({
 	start: function () {
 		this.reading = false;
-		this.artCache = this.loadArtCache();
 	},
 
 	socketNotificationReceived: function (notification, payload) {
@@ -29,23 +22,7 @@ module.exports = NodeHelper.create({
 			this.reading = true;
 			this.startReading();
 			this.checkCurrentPlayback();
-			this.loadFavorites();
-		}
-	},
-
-	loadArtCache: function () {
-		try {
-			return JSON.parse(fs.readFileSync(ART_CACHE_FILE, "utf8"));
-		} catch (e) {
-			return {};
-		}
-	},
-
-	saveArtCache: function () {
-		try {
-			fs.writeFileSync(ART_CACHE_FILE, JSON.stringify(this.artCache));
-		} catch (e) {
-			// ignore
+			this.loadNewReleases();
 		}
 	},
 
@@ -57,128 +34,105 @@ module.exports = NodeHelper.create({
 		return arr;
 	},
 
-	loadFavorites: function () {
-		const favorites = this.config.favorites || [];
-		if (favorites.length === 0) return;
+	loadNewReleasesCache: function () {
+		try {
+			return JSON.parse(fs.readFileSync(NEW_RELEASES_CACHE_FILE, "utf8"));
+		} catch (e) {
+			return null;
+		}
+	},
 
-		const indexed = favorites.map((fav, i) => ({ fav, originalIndex: i }));
-		this.shuffleArray(indexed);
+	saveNewReleasesCache: function (tracks) {
+		try {
+			fs.writeFileSync(NEW_RELEASES_CACHE_FILE, JSON.stringify({ fetchedAt: Date.now(), tracks }));
+		} catch (e) {
+			// ignore
+		}
+	},
 
-		const tracks = indexed.map(({ fav }) => ({
-			title: fav.title || "",
-			artist: fav.artist || "",
-			album: fav.album || "",
-			image: this.artCache[fav.artist + " - " + fav.album] || "",
-		}));
+	loadNewReleases: async function () {
+		if (!this.config.spotify || !this.config.spotify.clientId || !this.config.spotify.clientSecret) {
+			return;
+		}
 
-		this.sendSocketNotification("RECENT_TRACKS", tracks);
+		const cache = this.loadNewReleasesCache();
+		const refreshMs = (this.config.newReleasesRefreshHours || 12) * 60 * 60 * 1000;
+		const isFresh = cache && Date.now() - cache.fetchedAt < refreshMs;
 
-		const uncached = [];
-		indexed.forEach(({ fav }, i) => {
-			const cacheKey = fav.artist + " - " + fav.album;
-			if (!this.artCache[cacheKey]) {
-				uncached.push({ fav, index: i, cacheKey });
+		if (cache && cache.tracks.length > 0) {
+			this.sendSocketNotification("RECENT_TRACKS", this.shuffleArray(cache.tracks.slice()));
+		}
+
+		if (isFresh) return;
+
+		try {
+			const tracks = await this.fetchNewReleases();
+			if (tracks.length > 0) {
+				this.saveNewReleasesCache(tracks);
+				this.sendSocketNotification("RECENT_TRACKS", this.shuffleArray(tracks.slice()));
 			}
+		} catch (e) {
+			Log.error(`${this.name}: failed to fetch Spotify new releases - ${e.message}`);
+		}
+	},
+
+	getSpotifyToken: async function () {
+		if (this.spotifyToken && Date.now() < this.spotifyToken.expiresAt) {
+			return this.spotifyToken.value;
+		}
+
+		const { clientId, clientSecret } = this.config.spotify;
+		const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+
+		const response = await fetch(SPOTIFY_TOKEN_URL, {
+			method: "POST",
+			headers: {
+				Authorization: `Basic ${basicAuth}`,
+				"Content-Type": "application/x-www-form-urlencoded",
+				"User-Agent": "Mozilla/5.0 (compatible; MagicMirror-MusicDisplay/1.0)",
+			},
+			body: "grant_type=client_credentials",
 		});
 
-		if (uncached.length === 0) return;
+		if (!response.ok) {
+			const body = await response.text();
+			throw new Error(`token request failed with status ${response.status}: ${body}`);
+		}
 
-		let qi = 0;
-		const fetchNext = () => {
-			if (qi >= uncached.length) return;
-			const { fav, index, cacheKey } = uncached[qi++];
-			this.lookupArtwork(fav.artist, fav.album, (url) => {
-				if (url) {
-					this.artCache[cacheKey] = url;
-					this.saveArtCache();
-					tracks[index].image = url;
-					this.sendSocketNotification("RECENT_TRACKS", tracks);
-				}
-				setTimeout(fetchNext, 1100);
-			});
+		const json = await response.json();
+		this.spotifyToken = {
+			value: json.access_token,
+			expiresAt: Date.now() + (json.expires_in - 60) * 1000,
 		};
-
-		fetchNext();
+		return this.spotifyToken.value;
 	},
 
-	lookupArtwork: function (artist, album, callback) {
-		this.lookupMusicBrainz(artist, album, callback);
-	},
+	fetchNewReleases: async function () {
+		const token = await this.getSpotifyToken();
+		const country = this.config.newReleasesCountry || "US";
+		const limit = this.config.newReleasesLimit || 20;
+		const url = `${SPOTIFY_NEW_RELEASES_URL}?country=${country}&limit=${limit}`;
 
-	timedGet: function (url, opts, callback) {
-		if (httpsAgent) opts.agent = httpsAgent;
-		const req = https.get(url, opts, callback);
-		req.setTimeout(8000, () => {
-			req.destroy();
+		const response = await fetch(url, {
+			headers: {
+				Authorization: `Bearer ${token}`,
+				"User-Agent": "Mozilla/5.0 (compatible; MagicMirror-MusicDisplay/1.0)",
+			},
 		});
-		return req;
-	},
 
-	lookupMusicBrainz: function (artist, album, callback) {
-		const query = encodeURIComponent("artist:" + artist + " AND releasegroup:" + album);
-		const url = "https://musicbrainz.org/ws/2/release-group/?query=" + query + "&type=album&fmt=json&limit=1";
-		const opts = { headers: { "User-Agent": "MagicMirror-MusicDisplay/1.0 (mirror)" } };
+		if (!response.ok) {
+			const body = await response.text();
+			throw new Error(`new-releases request failed with status ${response.status}: ${body}`);
+		}
 
-		this.timedGet(url, opts, (res) => {
-			let body = "";
-			res.on("data", (chunk) => {
-				body += chunk;
-			});
-			res.on("end", () => {
-				try {
-					const json = JSON.parse(body);
-					const rg = json["release-groups"] && json["release-groups"][0];
-					if (!rg) return callback("");
-					this.fetchCoverArt(rg.id, callback);
-				} catch (e) {
-					callback("");
-				}
-			});
-		}).on("error", () => callback(""));
-	},
+		const json = await response.json();
+		const items = (json.albums && json.albums.items) || [];
 
-	followRedirects: function (url, opts, callback, hops) {
-		if (hops > 5) return callback(null);
-		this.timedGet(url, opts, (res) => {
-			if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-				res.resume();
-				this.followRedirects(res.headers.location, opts, callback, hops + 1);
-				return;
-			}
-			callback(res);
-		}).on("error", () => callback(null));
-	},
-
-	fetchCoverArt: function (releaseGroupId, callback) {
-		const url = "https://coverartarchive.org/release-group/" + releaseGroupId;
-		const opts = { headers: { "User-Agent": "MagicMirror-MusicDisplay/1.0 (mirror)" } };
-
-		this.followRedirects(url, opts, (res) => {
-			if (!res) return callback("");
-			this.parseCoverArtResponse(res, callback);
-		}, 0);
-	},
-
-	parseCoverArtResponse: function (res, callback) {
-		let body = "";
-		res.on("data", (chunk) => {
-			body += chunk;
-		});
-		res.on("end", () => {
-			try {
-				const json = JSON.parse(body);
-				const front = json.images && json.images.find((img) => img.front);
-				if (front && front.thumbnails && front.thumbnails["500"]) {
-					callback(front.thumbnails["500"]);
-				} else if (front && front.image) {
-					callback(front.image);
-				} else {
-					callback("");
-				}
-			} catch (e) {
-				callback("");
-			}
-		});
+		return items.map((album) => ({
+			album: album.name || "",
+			artist: (album.artists || []).map((a) => a.name).join(", "),
+			image: (album.images && album.images[0] && album.images[0].url) || "",
+		}));
 	},
 
 	checkCurrentPlayback: function () {
