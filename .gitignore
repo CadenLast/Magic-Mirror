@@ -89,3 +89,8 @@ modules/MMM-SportsScores/cache/
 # Persisted UI selections (active sport tab, standings view) so they survive
 # a MagicMirror restart - local runtime state, not source
 modules/MMM-SportsScores/state.json
+
+# Runtime caches for the new-releases feature (Spotify results, Last.fm
+# artist playcounts) - local runtime state, not source
+modules/MMM-MusicDisplay/new_releases_cache.json
+modules/MMM-MusicDisplay/artist_popularity_cache.json
