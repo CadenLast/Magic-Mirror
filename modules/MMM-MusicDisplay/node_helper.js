@@ -15,7 +15,12 @@ const DBUS_PATH = "/org/mpris/MediaPlayer2";
 const DBUS_IFACE = "org.mpris.MediaPlayer2.Player";
 const NEW_RELEASES_CACHE_FILE = path.join(__dirname, "new_releases_cache.json");
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
-const SPOTIFY_NEW_RELEASES_URL = "https://api.spotify.com/v1/browse/new-releases";
+const SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search";
+// Development-mode Spotify apps get a hard cap of 10 results per page on
+// this query - and only the first page is consistently big/known artists,
+// since relevance ranking degrades into a long tail of regional releases
+// past that (confirmed by comparing pages, not documented behavior).
+const SPOTIFY_NEW_RELEASES_LIMIT = 10;
 
 module.exports = NodeHelper.create({
 	start: function () {
@@ -116,9 +121,13 @@ module.exports = NodeHelper.create({
 
 	fetchNewReleases: async function () {
 		const token = await this.getSpotifyToken();
-		const country = this.config.newReleasesCountry || "US";
-		const limit = this.config.newReleasesLimit || 20;
-		const url = `${SPOTIFY_NEW_RELEASES_URL}?country=${country}&limit=${limit}`;
+		const market = this.config.newReleasesCountry || "US";
+
+		const url = new URL(SPOTIFY_SEARCH_URL);
+		url.searchParams.set("q", "tag:new");
+		url.searchParams.set("type", "album");
+		url.searchParams.set("market", market);
+		url.searchParams.set("limit", String(SPOTIFY_NEW_RELEASES_LIMIT));
 
 		const response = await fetch(url, {
 			headers: {
@@ -129,7 +138,7 @@ module.exports = NodeHelper.create({
 
 		if (!response.ok) {
 			const body = await response.text();
-			throw new Error(`new-releases request failed with status ${response.status}: ${body}`);
+			throw new Error(`new-releases search failed with status ${response.status}: ${body}`);
 		}
 
 		const json = await response.json();

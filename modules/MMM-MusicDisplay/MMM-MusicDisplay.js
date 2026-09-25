@@ -7,7 +7,6 @@ Module.register("MMM-MusicDisplay", {
 		rotationSpeed: 8000,
 		spotify: null,
 		newReleasesCountry: "US",
-		newReleasesLimit: 20,
 		newReleasesRefreshHours: 12,
 	},
 
