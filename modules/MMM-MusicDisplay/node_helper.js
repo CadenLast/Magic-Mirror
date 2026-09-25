@@ -14,13 +14,17 @@ const DBUS_DEST = "org.gnome.ShairportSync";
 const DBUS_PATH = "/org/mpris/MediaPlayer2";
 const DBUS_IFACE = "org.mpris.MediaPlayer2.Player";
 const NEW_RELEASES_CACHE_FILE = path.join(__dirname, "new_releases_cache.json");
+const ARTIST_POPULARITY_CACHE_FILE = path.join(__dirname, "artist_popularity_cache.json");
 const SPOTIFY_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_SEARCH_URL = "https://api.spotify.com/v1/search";
+const LASTFM_API_URL = "https://ws.audioscrobbler.com/2.0/";
 // Development-mode Spotify apps get a hard cap of 10 results per page on
-// this query - and only the first page is consistently big/known artists,
-// since relevance ranking degrades into a long tail of regional releases
-// past that (confirmed by comparing pages, not documented behavior).
+// this query, and Spotify removed the album/artist 'popularity' field in
+// Feb 2026 - so we page through several batches of the raw tag:new feed and
+// rank the results ourselves using Last.fm's artist.getinfo playcount.
 const SPOTIFY_NEW_RELEASES_LIMIT = 10;
+const SPOTIFY_NEW_RELEASES_PAGES = 20; // 20 * 10 = 200 candidate albums to rank
+const ARTIST_POPULARITY_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // Last.fm playcount changes slowly - a month is plenty fresh
 
 module.exports = NodeHelper.create({
 	start: function () {
@@ -58,6 +62,53 @@ module.exports = NodeHelper.create({
 			fs.writeFileSync(NEW_RELEASES_CACHE_FILE, JSON.stringify({ fetchedAt: Date.now(), tracks }));
 		} catch (e) {
 			// ignore
+		}
+	},
+
+	loadArtistPopularityCache: function () {
+		try {
+			return JSON.parse(fs.readFileSync(ARTIST_POPULARITY_CACHE_FILE, "utf8"));
+		} catch (e) {
+			return {};
+		}
+	},
+
+	saveArtistPopularityCache: function () {
+		try {
+			fs.writeFileSync(ARTIST_POPULARITY_CACHE_FILE, JSON.stringify(this.artistPopularityCache));
+		} catch (e) {
+			// ignore
+		}
+	},
+
+	getArtistPlaycount: async function (artistName) {
+		if (!this.artistPopularityCache) {
+			this.artistPopularityCache = this.loadArtistPopularityCache();
+		}
+
+		const key = artistName.toLowerCase();
+		const cached = this.artistPopularityCache[key];
+		if (cached && Date.now() - cached.fetchedAt < ARTIST_POPULARITY_CACHE_TTL_MS) {
+			return cached.playcount;
+		}
+
+		try {
+			const url = new URL(LASTFM_API_URL);
+			url.searchParams.set("method", "artist.getinfo");
+			url.searchParams.set("artist", artistName);
+			url.searchParams.set("api_key", this.config.lastfm.apiKey);
+			url.searchParams.set("format", "json");
+
+			const response = await fetch(url);
+			const json = await response.json();
+			const playcount = parseInt((json.artist && json.artist.stats && json.artist.stats.playcount) || "0", 10);
+
+			this.artistPopularityCache[key] = { playcount, fetchedAt: Date.now() };
+			this.saveArtistPopularityCache();
+			return playcount;
+		} catch (e) {
+			Log.warn(`${this.name}: Last.fm lookup failed for artist "${artistName}" - ${e.message}`);
+			return 0;
 		}
 	},
 
@@ -119,15 +170,13 @@ module.exports = NodeHelper.create({
 		return this.spotifyToken.value;
 	},
 
-	fetchNewReleases: async function () {
-		const token = await this.getSpotifyToken();
-		const market = this.config.newReleasesCountry || "US";
-
+	fetchNewReleasesPage: async function (token, market, offset) {
 		const url = new URL(SPOTIFY_SEARCH_URL);
 		url.searchParams.set("q", "tag:new");
 		url.searchParams.set("type", "album");
 		url.searchParams.set("market", market);
 		url.searchParams.set("limit", String(SPOTIFY_NEW_RELEASES_LIMIT));
+		url.searchParams.set("offset", String(offset));
 
 		const response = await fetch(url, {
 			headers: {
@@ -142,13 +191,40 @@ module.exports = NodeHelper.create({
 		}
 
 		const json = await response.json();
-		const items = (json.albums && json.albums.items) || [];
+		return (json.albums && json.albums.items) || [];
+	},
 
-		return items.map((album) => ({
+	fetchNewReleases: async function () {
+		const token = await this.getSpotifyToken();
+		const market = this.config.newReleasesCountry || "US";
+
+		let albums = [];
+		for (let page = 0; page < SPOTIFY_NEW_RELEASES_PAGES; page++) {
+			const items = await this.fetchNewReleasesPage(token, market, page * SPOTIFY_NEW_RELEASES_LIMIT);
+			if (items.length === 0) break;
+			albums = albums.concat(items);
+		}
+
+		const candidates = albums.map((album) => ({
 			album: album.name || "",
 			artist: (album.artists || []).map((a) => a.name).join(", "),
+			primaryArtist: (album.artists && album.artists[0] && album.artists[0].name) || "",
 			image: (album.images && album.images[0] && album.images[0].url) || "",
 		}));
+
+		if (!this.config.lastfm || !this.config.lastfm.apiKey) {
+			return candidates.slice(0, SPOTIFY_NEW_RELEASES_LIMIT);
+		}
+
+		const uniqueArtists = [...new Set(candidates.map((c) => c.primaryArtist).filter(Boolean))];
+		const playcounts = {};
+		for (const artistName of uniqueArtists) {
+			playcounts[artistName.toLowerCase()] = await this.getArtistPlaycount(artistName);
+		}
+
+		candidates.sort((a, b) => (playcounts[b.primaryArtist.toLowerCase()] || 0) - (playcounts[a.primaryArtist.toLowerCase()] || 0));
+
+		return candidates.slice(0, SPOTIFY_NEW_RELEASES_LIMIT).map(({ album, artist, image }) => ({ album, artist, image }));
 	},
 
 	checkCurrentPlayback: function () {

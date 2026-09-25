@@ -178,6 +178,7 @@ let config = {
 			config: {
 				metadataPipe: "/tmp/shairport-sync-metadata",
 				spotify: keys.spotify,
+				lastfm: keys.lastfm,
 			}
 		},
 		{
