@@ -205,12 +205,23 @@ module.exports = NodeHelper.create({
 			albums = albums.concat(items);
 		}
 
-		const candidates = albums.map((album) => ({
-			album: album.name || "",
-			artist: (album.artists || []).map((a) => a.name).join(", "),
-			primaryArtist: (album.artists && album.artists[0] && album.artists[0].name) || "",
-			image: (album.images && album.images[0] && album.images[0].url) || "",
-		}));
+		const seen = new Set();
+		const candidates = [];
+		for (const album of albums) {
+			const entry = {
+				album: album.name || "",
+				artist: (album.artists || []).map((a) => a.name).join(", "),
+				primaryArtist: (album.artists && album.artists[0] && album.artists[0].name) || "",
+				image: (album.images && album.images[0] && album.images[0].url) || "",
+			};
+			// Spotify's tag:new search returns separate album objects for different
+			// editions/regional releases of the same title (own id, own artwork) -
+			// dedupe those so the same release doesn't fill multiple carousel slots.
+			const dedupeKey = `${entry.album.toLowerCase()}|${entry.artist.toLowerCase()}`;
+			if (seen.has(dedupeKey)) continue;
+			seen.add(dedupeKey);
+			candidates.push(entry);
+		}
 
 		if (!this.config.lastfm || !this.config.lastfm.apiKey) {
 			return candidates.slice(0, SPOTIFY_NEW_RELEASES_LIMIT);
