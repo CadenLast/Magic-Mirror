@@ -559,8 +559,10 @@ module.exports = NodeHelper.create({
 
 		// e.g. "49ers 3 -2 0 at Rams 2 -3 0" - team name, gain, loss, then a
 		// separate bold/starred number that isn't needed, "at", then the same
-		// for the home team.
-		const gameRegex = /(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}\s+at\s+(\S+)\s+(\d+)\s+(-\d+)\s+\d+\*{0,2}/g;
+		// for the home team. The tie-breaker asterisk(s) after that bold number
+		// are sometimes a separate space-separated token (e.g. "5 ** at") rather
+		// than attached directly to the digit (e.g. "5** at") - allow either.
+		const gameRegex = /(\S+)\s+(\d+)\s+(-\d+)\s+\d+\s*\*{0,2}\s+at\s+(\S+)\s+(\d+)\s+(-\d+)\s+\d+\s*\*{0,2}/g;
 		const games = [];
 		for (const { day, text: sectionText } of sections) {
 			const isPreSunday = day !== "SUNDAY" && day !== "MONDAY";
