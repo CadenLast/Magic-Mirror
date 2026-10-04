@@ -158,6 +158,16 @@ Module.register("MMM-Wallpaper", {
 		this.logEl = document.createElement("div");
 		this.logEl.className = "wallpaper-log";
 		panel.appendChild(this.logEl);
+
+		const restart = document.createElement("button");
+		restart.className = "wallpaper-restart-button";
+		restart.textContent = "Restart MagicMirror";
+		restart.addEventListener("click", () => {
+			restart.textContent = "Restarting...";
+			restart.disabled = true;
+			this.sendSocketNotification("RESTART_APP");
+		});
+		panel.appendChild(restart);
 		this.logs.forEach((entry) => this.appendLogLine(entry));
 		this.logEl.scrollTop = this.logEl.scrollHeight;
 

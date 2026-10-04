@@ -14,6 +14,8 @@ module.exports = NodeHelper.create({
 			} catch {
 				this.sendSocketNotification("WALLPAPERS", []);
 			}
+		} else if (notification === "RESTART_APP") {
+			process.exit(1);
 		}
 	}
 });

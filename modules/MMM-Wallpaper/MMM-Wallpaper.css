@@ -107,3 +107,20 @@
 .wallpaper-log-line.error {
   color: #ff6b6b;
 }
+
+.wallpaper-restart-button {
+  display: block;
+  margin: 16px auto 0;
+  padding: 10px 24px;
+  font-size: 1rem;
+  color: #fff;
+  background: rgba(255, 107, 107, 0.25);
+  border: 1px solid rgba(255, 107, 107, 0.6);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.wallpaper-restart-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
