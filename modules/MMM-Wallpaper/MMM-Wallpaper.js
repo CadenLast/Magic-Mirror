@@ -11,7 +11,62 @@ Module.register("MMM-Wallpaper", {
 		this.wallpapers = [];
 		this.current = 0;
 		this.pickerVisible = false;
+		this.logs = [];
+		this.logEl = null;
+		this.captureConsole();
 		this.sendSocketNotification("GET_WALLPAPERS");
+	},
+
+	captureConsole () {
+		["log", "info", "warn", "error", "debug"].forEach((level) => {
+			const original = console[level].bind(console);
+			console[level] = (...args) => {
+				original(...args);
+				this.addLog(level, args);
+			};
+		});
+		window.addEventListener("error", (e) => this.addLog("error", [e.message]));
+		window.addEventListener("unhandledrejection", (e) => this.addLog("error", ["Unhandled rejection:", e.reason]));
+	},
+
+	formatArg (arg) {
+		if (arg instanceof Error) {
+			return arg.stack || arg.message;
+		}
+		if (typeof arg === "object" && arg !== null) {
+			try {
+				return JSON.stringify(arg);
+			} catch {
+				return String(arg);
+			}
+		}
+		return String(arg);
+	},
+
+	addLog (level, args) {
+		const time = new Date().toLocaleTimeString();
+		const text = args.map((a) => this.formatArg(a)).join(" ");
+		this.logs.push({ level, line: `${time} [${level}] ${text}` });
+		if (this.logs.length > 300) {
+			this.logs.shift();
+		}
+		if (this.logEl) {
+			this.appendLogLine(this.logs[this.logs.length - 1]);
+		}
+	},
+
+	appendLogLine (entry) {
+		const atBottom = this.logEl.scrollTop + this.logEl.clientHeight >= this.logEl.scrollHeight - 5;
+		const row = document.createElement("div");
+		row.className = `wallpaper-log-line ${entry.level}`;
+		row.textContent = entry.line;
+		this.logEl.appendChild(row);
+		while (this.logEl.childElementCount > 300) {
+			this.logEl.firstChild.remove();
+		}
+		if (atBottom) {
+			this.logEl.scrollTop = this.logEl.scrollHeight;
+		}
 	},
 
 	socketNotificationReceived (notification, payload) {
@@ -94,6 +149,18 @@ Module.register("MMM-Wallpaper", {
 		});
 
 		panel.appendChild(grid);
+
+		const logTitle = document.createElement("div");
+		logTitle.className = "wallpaper-picker-title wallpaper-log-title";
+		logTitle.textContent = "Console";
+		panel.appendChild(logTitle);
+
+		this.logEl = document.createElement("div");
+		this.logEl.className = "wallpaper-log";
+		panel.appendChild(this.logEl);
+		this.logs.forEach((entry) => this.appendLogLine(entry));
+		this.logEl.scrollTop = this.logEl.scrollHeight;
+
 		overlay.appendChild(panel);
 		document.body.appendChild(overlay);
 		this.overlayEl = overlay;
@@ -105,6 +172,7 @@ Module.register("MMM-Wallpaper", {
 		this.pickerVisible = false;
 		if (this.overlayEl) {
 			this.overlayEl.classList.remove("visible");
+			this.logEl = null;
 			setTimeout(() => {
 				this.overlayEl.remove();
 				this.overlayEl = null;
