@@ -11,9 +11,11 @@ Module.register("MMM-Wallpaper", {
 		this.wallpapers = [];
 		this.current = 0;
 		this.pickerVisible = false;
-		this.logs = [];
+		this.logs = this.loadLogs();
 		this.logEl = null;
+		this.saveTimer = null;
 		this.captureConsole();
+		this.addLog("info", ["--- page loaded ---"]);
 		this.sendSocketNotification("GET_WALLPAPERS");
 	},
 
@@ -25,8 +27,28 @@ Module.register("MMM-Wallpaper", {
 				this.addLog(level, args);
 			};
 		});
+		window.addEventListener("pagehide", () => this.saveLogs());
 		window.addEventListener("error", (e) => this.addLog("error", [e.message]));
 		window.addEventListener("unhandledrejection", (e) => this.addLog("error", ["Unhandled rejection:", e.reason]));
+	},
+
+	loadLogs () {
+		try {
+			const saved = JSON.parse(localStorage.getItem("wallpaperConsoleLogs"));
+			return Array.isArray(saved) ? saved : [];
+		} catch {
+			return [];
+		}
+	},
+
+	saveLogs () {
+		clearTimeout(this.saveTimer);
+		this.saveTimer = null;
+		try {
+			localStorage.setItem("wallpaperConsoleLogs", JSON.stringify(this.logs));
+		} catch {
+			// storage unavailable or full
+		}
 	},
 
 	formatArg (arg) {
@@ -49,6 +71,9 @@ Module.register("MMM-Wallpaper", {
 		this.logs.push({ level, line: `${time} [${level}] ${text}` });
 		if (this.logs.length > 300) {
 			this.logs.shift();
+		}
+		if (!this.saveTimer) {
+			this.saveTimer = setTimeout(() => this.saveLogs(), 1000);
 		}
 		if (this.logEl) {
 			this.appendLogLine(this.logs[this.logs.length - 1]);
