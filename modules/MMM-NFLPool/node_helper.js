@@ -609,7 +609,7 @@ module.exports = NodeHelper.create({
 			this.cache.week = week;
 			this.cache.weekLabel = weekLabel;
 			this.cache.lastParsedAt = new Date().toISOString();
-			this.cache.data = { divisions: rawDivisions, games, homeDivisionName: null, rank: null, ofCount: null };
+			this.cache.data = { divisions: rawDivisions, games, finalGames: [], homeDivisionName: null, rank: null, ofCount: null };
 			this.cache.lastError = null;
 			this.cache.lastErrorAt = null;
 			this.cache.lastFailedMessageId = null;
@@ -796,7 +796,7 @@ module.exports = NodeHelper.create({
 		});
 		if (!resp.ok) {
 			Log.error(`${this.name}: balldontlie games fetch failed: ${resp.status}`);
-			return [];
+			return null;
 		}
 
 		const data = await resp.json();
@@ -808,6 +808,30 @@ module.exports = NodeHelper.create({
 			state: game.status_state === "scheduled" ? "pre" : (game.status_state === "final" ? "post" : "in"),
 			isOT: (game.status || "").includes("OT")
 		}));
+	},
+
+	// Final results for this week's pool games are kept in the cache so they
+	// survive the fetch window moving past them, API failures, and restarts.
+	// Only games matching a pool game are stored, which keeps last week's
+	// finals (still inside the window on Sunday) out of the new week.
+	mergeFinalGames (fetched, games) {
+		const stored = this.cache.data.finalGames || [];
+		const isPoolGame = (live) => games.some((g) => live.awayTeam.toLowerCase().includes(g.awayTeam.toLowerCase())
+			&& live.homeTeam.toLowerCase().includes(g.homeTeam.toLowerCase()));
+		const sameGame = (a, b) => a.awayTeam === b.awayTeam && a.homeTeam === b.homeTeam;
+
+		const finals = [...stored];
+		let changed = false;
+		for (const live of fetched || []) {
+			if (live.state !== "post" || live.awayScore === null || live.homeScore === null) continue;
+			if (!isPoolGame(live) || finals.some((f) => sameGame(f, live))) continue;
+			finals.push(live);
+			changed = true;
+		}
+		if (changed) this.cache.data.finalGames = finals;
+
+		const inProgress = (fetched || []).filter((live) => !finals.some((f) => sameGame(f, live)));
+		return [...finals, ...inProgress];
 	},
 
 	matchLiveGame (teamName, liveGames) {
@@ -1045,7 +1069,7 @@ module.exports = NodeHelper.create({
 		if (!this.cache.data?.divisions || !this.cache.data?.games) return;
 
 		try {
-			const liveGames = await this.fetchLiveGames();
+			const liveGames = this.mergeFinalGames(await this.fetchLiveGames(), this.cache.data.games);
 			const { projected, allGamesFinal } = this.computeProjections(this.cache.data.divisions, this.cache.data.games, liveGames);
 			const { homeDivisionName, rank, ofCount } = this.computeHomeStanding(projected);
 
