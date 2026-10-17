@@ -280,8 +280,13 @@ module.exports = NodeHelper.create({
 			return cached.games;
 		}
 
+		this.gamesInFlight = this.gamesInFlight || {};
 		try {
-			const games = await this.fetchGamesForProviderUncached(sport, league, date, balldontlieKeys, collegeTeams, cfbdKey);
+			if (!this.gamesInFlight[cacheKey]) {
+				this.gamesInFlight[cacheKey] = this.fetchGamesForProviderUncached(sport, league, date, balldontlieKeys, collegeTeams, cfbdKey)
+					.finally(() => delete this.gamesInFlight[cacheKey]);
+			}
+			const games = await this.gamesInFlight[cacheKey];
 			this.gamesCache[cacheKey] = { games, fetchedAt: Date.now() };
 			return games;
 		} catch (error) {
@@ -452,31 +457,37 @@ module.exports = NodeHelper.create({
 	// refresh) - not per-feature spacing, which could still add up past the
 	// real 5/min limit if multiple features happen to share a key. Every
 	// balldontlie call goes through this rather than calling fetch() directly.
-	async throttleBalldontlie (apiKey) {
+	throttleBalldontlie (apiKey) {
+		this.balldontlieThrottleQueue = this.balldontlieThrottleQueue || {};
 		this.balldontlieRequestLog = this.balldontlieRequestLog || {};
-		const now = Date.now();
-		const recent = (this.balldontlieRequestLog[apiKey] || []).filter((t) => now - t < 60000);
 
-		if (recent.length >= BALLDONTLIE_MAX_REQUESTS_PER_MINUTE) {
-			const waitMs = 60000 - (now - recent[0]) + 250;
-			Log.warn(`${this.name}: balldontlie request throttled - waiting ${Math.ceil(waitMs / 1000)}s to stay under ${BALLDONTLIE_MAX_REQUESTS_PER_MINUTE}/min`);
-			await sleep(waitMs);
-			return this.throttleBalldontlie(apiKey);
-		}
-
-		recent.push(Date.now());
-		this.balldontlieRequestLog[apiKey] = recent;
+		const turn = (this.balldontlieThrottleQueue[apiKey] || Promise.resolve()).then(async () => {
+			let recent = (this.balldontlieRequestLog[apiKey] || []).filter((t) => Date.now() - t < 60000);
+			while (recent.length >= BALLDONTLIE_MAX_REQUESTS_PER_MINUTE) {
+				const waitMs = 60000 - (Date.now() - recent[0]) + 250;
+				Log.warn(`${this.name}: balldontlie request throttled - waiting ${Math.ceil(waitMs / 1000)}s to stay under ${BALLDONTLIE_MAX_REQUESTS_PER_MINUTE}/min`);
+				await sleep(waitMs);
+				recent = recent.filter((t) => Date.now() - t < 60000);
+			}
+			recent.push(Date.now());
+			this.balldontlieRequestLog[apiKey] = recent;
+		});
+		this.balldontlieThrottleQueue[apiKey] = turn;
+		return turn;
 	},
 
 	async balldontlieFetch (apiKey, url) {
-		await this.throttleBalldontlie(apiKey);
-		let response = await fetch(url, { headers: { Authorization: apiKey } });
-		if (response.status === 429) {
-			// Shouldn't normally happen given the throttle above, but as a last
-			// resort (e.g. the same key used elsewhere at the same time) wait out
-			// a full window and retry once rather than just failing outright.
-			await sleep(60000);
+		let response;
+		for (let attempt = 0; attempt < 4; attempt++) {
+			await this.throttleBalldontlie(apiKey);
 			response = await fetch(url, { headers: { Authorization: apiKey } });
+			if (response.status !== 429) {
+				return response;
+			}
+			// Shouldn't normally happen given the throttle above, but the same key
+			// can be in use elsewhere at the same time - wait until the window resets.
+			const resetMs = Number(response.headers.get("x-ratelimit-reset")) * 1000 - Date.now();
+			await sleep(Math.min(Math.max(resetMs, 0) + 1000, 60000));
 		}
 		return response;
 	},
@@ -707,13 +718,19 @@ module.exports = NodeHelper.create({
 		if (cached && Date.now() - cached.fetchedAt < BALLDONTLIE_STANDINGS_TTL_MS) {
 			records = cached.records;
 		} else {
-			const season = this.resolveBalldontlieSeason(league, new Date());
-			const [teams, games] = await Promise.all([
-				this.fetchBalldontlieTeamsLookup(league, apiKey),
-				this.fetchBalldontlieSeasonGames(league, apiKey, season)
-			]);
-			records = this.computeBalldontlieTeamRecords(teams, games);
-			this.balldontlieStandingsCache[league] = { records, fetchedAt: Date.now() };
+			this.balldontlieStandingsInFlight = this.balldontlieStandingsInFlight || {};
+			if (!this.balldontlieStandingsInFlight[league]) {
+				const season = this.resolveBalldontlieSeason(league, new Date());
+				this.balldontlieStandingsInFlight[league] = Promise.all([
+					this.fetchBalldontlieTeamsLookup(league, apiKey),
+					this.fetchBalldontlieSeasonGames(league, apiKey, season)
+				]).then(([teams, games]) => {
+					const computed = this.computeBalldontlieTeamRecords(teams, games);
+					this.balldontlieStandingsCache[league] = { records: computed, fetchedAt: Date.now() };
+					return computed;
+				}).finally(() => delete this.balldontlieStandingsInFlight[league]);
+			}
+			records = await this.balldontlieStandingsInFlight[league];
 		}
 		return { isRankings: false, groups: this.buildBalldontlieStandingsGroups(records, league, view) };
 	},
