@@ -456,6 +456,11 @@
   background: rgba(0, 0, 0, 0.2);
 }
 
+.scores-game-upset {
+  background: rgba(231, 76, 60, 0.12);
+  box-shadow: inset 3px 0 0 #e74c3c;
+}
+
 .scores-teams {
   display: flex;
   flex-direction: column;

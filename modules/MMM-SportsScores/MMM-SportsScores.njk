@@ -101,7 +101,7 @@
           {% endif %}
           {% for game in games %}
             <div
-              class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }} {{ 'scores-game-has-situation' if game.state == 'in' and game.situation }}"
+              class="scores-game scores-game-clickable {{ 'scores-game-live' if game.state == 'in' }} {{ 'scores-game-upset' if game.isUpset }} {{ 'scores-game-has-situation' if game.state == 'in' and game.situation }}"
               data-game-id="game-{{ game.id }}"
               data-url="{{ game.url }}"
               data-title="{{ game.awayTeam.abbreviation }} vs {{ game.homeTeam.abbreviation }}"
