@@ -124,6 +124,11 @@ const COLLEGE_TEAM_SCHEDULE_TTL_MS = 3 * 60 * 60 * 1000;
 // source actually publishing it, matching this module's own refresh cadence.
 const COLLEGE_TEAM_LIVE_TTL_MS = 60 * 1000;
 
+// The NCAA's scoreboard data via henrygd/ncaa-api's public instance (limited
+// to 3 requests/second per IP, no monthly quota - unlike the CFBD/CBBD free
+// tier's shared 1,000 calls/month).
+const NCAA_API_BASE = "https://ncaa-api.henrygd.me";
+
 // balldontlie doesn't include team logos, but ESPN's static logo CDN is just
 // image assets (not an API endpoint), so it isn't affected by the reliability
 // problems that ruled ESPN out for game/score data. It uses lowercase team
@@ -310,6 +315,9 @@ module.exports = NodeHelper.create({
 			return this.fetchBalldontlieGames(sport, league, date, balldontlieKeys[league]);
 		}
 		if (provider === "college-teams-aggregate") {
+			if (league === "mens-college-basketball") {
+				return this.fetchNcaabGames(date, collegeTeams, cfbdKey);
+			}
 			return this.fetchCollegeTeamsAggregateGames(sport, date, collegeTeams, cfbdKey);
 		}
 		throw new Error(`No data source configured for ${sport}/${league}`);
@@ -798,7 +806,7 @@ module.exports = NodeHelper.create({
 			const logo = logoOverrides[t.school] || (league === "college-football"
 				? (t.logos && t.logos[0]) || ""
 				: (t.sourceId ? `https://a.espncdn.com/i/teamlogos/ncaa/500/${t.sourceId}.png` : ""));
-			const entry = { abbreviation: t.abbreviation || t.school, logo };
+			const entry = { abbreviation: t.abbreviation || t.school, logo, school: t.school };
 			// Sidearm RSS/Hawkeyes opponent names are often shortened (e.g.
 			// "Southeast Missouri" instead of CFBD's canonical "Southeast
 			// Missouri State"), which would otherwise miss this lookup entirely
@@ -909,6 +917,78 @@ module.exports = NodeHelper.create({
 		})));
 		const deduped = this.dedupeGamesByMatchup(games.filter(Boolean));
 		return this.markTrackedTeamGames(deduped, relevantTeams);
+	},
+
+	// League-wide NCAAB games from ncaa-api, merged with the tracked teams'
+	// own schedules. The tracked-team sources only ever report "not yet
+	// played" or "final", so ncaa-api goes first in the dedupe to win for
+	// anything it also has (live state/clock included), while the tracked
+	// teams still show up if ncaa-api is down or missing a game.
+	async fetchNcaabGames (date, collegeTeams, cfbdKey) {
+		const relevantTeams = (collegeTeams || []).filter((t) => t.sport === "basketball");
+		const [ncaaResult, trackedGames] = await Promise.all([
+			this.fetchNcaaApiBasketballGames(date, cfbdKey).then((games) => ({ games }), (error) => ({ error })),
+			Promise.all(relevantTeams.map((t) => this.fetchCollegeTeamGameForDate(t.sport, t.team, date, cfbdKey).catch(() => null)))
+		]);
+		const tracked = trackedGames.filter(Boolean);
+		if (ncaaResult.error) {
+			if (!tracked.length) {
+				throw ncaaResult.error;
+			}
+			Log.warn(`${this.name}: ncaa-api failed, showing tracked teams only: ${ncaaResult.error.message}`);
+		}
+		const deduped = this.dedupeGamesByMatchup([...(ncaaResult.games || []), ...tracked]);
+		return this.markTrackedTeamGames(deduped, relevantTeams);
+	},
+
+	async fetchNcaaApiBasketballGames (date, cfbdKey) {
+		const path = `${date.slice(0, 4)}/${date.slice(4, 6)}/${date.slice(6, 8)}`;
+		const response = await fetch(`${NCAA_API_BASE}/scoreboard/basketball-men/d1/${path}/all-conf`);
+		if (!response.ok) {
+			throw new Error(`ncaa-api HTTP ${response.status}`);
+		}
+		const data = await response.json();
+		const teamsLookup = cfbdKey ? await this.fetchCfbdTeamsLookup("mens-college-basketball", cfbdKey).catch(() => null) : null;
+		return Promise.all((data.games || []).map((g) => this.parseNcaaApiGame(g.game, teamsLookup)));
+	},
+
+	async parseNcaaApiGame (game, teamsLookup) {
+		const state = game.gameState === "final" ? "post" : game.gameState === "live" ? "in" : "pre";
+		const side = async (team) => {
+			const shortName = team.names?.short || "TBD";
+			const match = teamsLookup && (teamsLookup.get(shortName) || teamsLookup.get(shortName.replace(/\.$/, "")) || teamsLookup.get(shortName.replace(/\bSt\.?$/, "State")));
+			const logoUrl = match?.logo || "";
+			return {
+				name: match?.school || shortName.replace(/\bSt\.$/, "State"),
+				abbreviation: match?.abbreviation || team.names?.char6 || shortName,
+				logo: logoUrl ? await this.cacheLogo(logoUrl) : "",
+				score: String(team.score || "0"),
+				rank: team.rank ? Number(team.rank) : null
+			};
+		};
+		const [home, away] = await Promise.all([side(game.home), side(game.away)]);
+
+		let detail = "";
+		if (state === "post") {
+			detail = game.currentPeriod && game.currentPeriod !== "FINAL" ? `Final/${game.currentPeriod.replace(/^FINAL\//, "")}` : "Final";
+		} else if (state === "in") {
+			detail = [game.currentPeriod, game.contestClock].filter(Boolean).join(" ");
+		}
+
+		return {
+			id: String(game.gameID || ""),
+			sport: "basketball",
+			league: "mens-college-basketball",
+			url: game.url ? `https://www.ncaa.com${game.url}` : "https://www.ncaa.com/scoreboard/basketball-men/d1",
+			homeRank: home.rank || 99,
+			awayRank: away.rank || 99,
+			homeTeam: home,
+			awayTeam: away,
+			state,
+			detail,
+			eventDate: game.startTimeEpoch ? new Date(Number(game.startTimeEpoch) * 1000).toISOString() : "",
+			situation: null
+		};
 	},
 
 	// A game's favoriteIsHome/favoriteIsAway are set when it's first fetched,
