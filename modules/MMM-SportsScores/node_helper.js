@@ -9,7 +9,8 @@ const Log = require("logger");
 // own directory automatically, so no custom serving route is needed. Not
 // committed to git (see .gitignore) since these are downloaded binary
 // assets, not source.
-const LOGO_CACHE_DIR = path.join(__dirname, "cache", "logos");
+const CACHE_DIR = path.join(__dirname, "cache");
+const LOGO_CACHE_DIR = path.join(CACHE_DIR, "logos");
 
 // The frontend's UI selections (active sport tab, standings view) live only
 // in browser memory, so they're lost on every MagicMirror restart - this
@@ -70,7 +71,8 @@ const AP_POLL_LEAGUES = new Set(["college-football", "mens-college-basketball"])
 // is the whole reason those teams are handled individually in the first
 // place. This fully removes ESPN from the picture for these two leagues.
 const COLLEGE_TEAMS_AGGREGATE_LEAGUES = new Set(["college-football", "mens-college-basketball"]);
-const AP_POLL_TTL_MS = 60 * 60 * 1000;
+const COLLEGE_LEAGUE_BY_SPORT = { football: "college-football", basketball: "mens-college-basketball" };
+const AP_POLL_TTL_MS = 12 * 60 * 60 * 1000;
 
 // Games/standings already refresh on their own minute-based cycle, so
 // re-fetching the exact same query more often than that (e.g. rapid
@@ -78,7 +80,7 @@ const AP_POLL_TTL_MS = 60 * 60 * 1000;
 // checked seconds ago) just burns rate-limit budget for no fresher data -
 // short enough to not meaningfully delay a genuinely live score update.
 const GAMES_FRESHNESS_TTL_MS = 45 * 1000;
-const CFBD_TEAMS_TTL_MS = 24 * 60 * 60 * 1000;
+const CFBD_TEAMS_TTL_MS = 365 * 24 * 60 * 60 * 1000;
 
 // balldontlie's published free-tier limit is 5 requests/min per key. This is a
 // hard cap on OUR OWN usage, enforced globally per API key value across every
@@ -315,10 +317,7 @@ module.exports = NodeHelper.create({
 			return this.fetchBalldontlieGames(sport, league, date, balldontlieKeys[league]);
 		}
 		if (provider === "college-teams-aggregate") {
-			if (league === "mens-college-basketball") {
-				return this.fetchNcaabGames(date, collegeTeams, cfbdKey);
-			}
-			return this.fetchCollegeTeamsAggregateGames(sport, date, collegeTeams, cfbdKey);
+			return this.fetchNcaaApiMergedGames(sport, league, date, collegeTeams, cfbdKey);
 		}
 		throw new Error(`No data source configured for ${sport}/${league}`);
 	},
@@ -390,7 +389,11 @@ module.exports = NodeHelper.create({
 				await sleep((Object.keys(leagueMap).length + index) * 400);
 			}
 			try {
-				const game = await this.fetchCollegeTeamGameForDate(sport, team, date, cfbdKey);
+				// The league-wide list carries ranks and live state that the
+				// tracked team's own schedule doesn't, and sharing its game id
+				// is what keeps it from showing twice on the college tabs.
+				const leagueGames = await this.fetchGamesForProvider(sport, COLLEGE_LEAGUE_BY_SPORT[sport], date, balldontlieKeys, collegeTeams, cfbdKey).catch(() => []);
+				const game = leagueGames.find((g) => g.homeTeam.name === team || g.awayTeam.name === team) || await this.fetchCollegeTeamGameForDate(sport, team, date, cfbdKey);
 				if (game) {
 					collegeGames.push(game);
 				}
@@ -790,10 +793,37 @@ module.exports = NodeHelper.create({
 			return cached.lookup;
 		}
 
+		// The free CFBD/CBBD tier is a small shared monthly pool, so this
+		// list also lives on disk (surviving restarts) and a stale copy still
+		// beats no logos at all if a refresh fails or the pool is exhausted.
+		const year = new Date().getFullYear();
+		const cacheFile = path.join(CACHE_DIR, league === "college-football" ? `teams-${league}-${year}.json` : `teams-${league}.json`);
+		let onDisk = null;
+		try {
+			onDisk = JSON.parse(fs.readFileSync(cacheFile, "utf8"));
+		} catch (error) {
+			onDisk = null;
+		}
+		const fromDisk = () => ({ lookup: new Map(onDisk.entries), fetchedAt: onDisk.fetchedAt });
+		if (onDisk && Date.now() - onDisk.fetchedAt < CFBD_TEAMS_TTL_MS) {
+			this.cfbdTeamsCache[league] = fromDisk();
+			return this.cfbdTeamsCache[league].lookup;
+		}
+
 		const url = league === "college-football"
-			? `https://api.collegefootballdata.com/teams?year=${new Date().getFullYear()}`
+			? `https://api.collegefootballdata.com/teams?year=${year}`
 			: "https://api.collegebasketballdata.com/teams";
-		const teams = await this.fetchCfbdJson(url, apiKey);
+		let teams;
+		try {
+			teams = await this.fetchCfbdJson(url, apiKey);
+		} catch (error) {
+			if (!onDisk) {
+				throw error;
+			}
+			Log.warn(`${this.name}: Using stale ${league} teams lookup after fetch failure: ${error.message}`);
+			this.cfbdTeamsCache[league] = fromDisk();
+			return this.cfbdTeamsCache[league].lookup;
+		}
 		// Football's response includes real logo URLs directly; basketball's
 		// doesn't, but its "sourceId" is ESPN's own numeric team ID (confirmed
 		// by cross-referencing against ESPN's own scoreboard data directly -
@@ -823,6 +853,12 @@ module.exports = NodeHelper.create({
 		}
 
 		this.cfbdTeamsCache[league] = { lookup, fetchedAt: Date.now() };
+		try {
+			fs.mkdirSync(CACHE_DIR, { recursive: true });
+			fs.writeFileSync(cacheFile, JSON.stringify({ fetchedAt: Date.now(), entries: [...lookup] }));
+		} catch (error) {
+			Log.warn(`${this.name}: Failed to save ${league} teams lookup: ${error.message}`);
+		}
 		return lookup;
 	},
 
@@ -919,15 +955,15 @@ module.exports = NodeHelper.create({
 		return this.markTrackedTeamGames(deduped, relevantTeams);
 	},
 
-	// League-wide NCAAB games from ncaa-api, merged with the tracked teams'
-	// own schedules. The tracked-team sources only ever report "not yet
+	// League-wide NCAAF/NCAAB games from ncaa-api, merged with the tracked
+	// teams' own schedules. The tracked-team sources only ever report "not yet
 	// played" or "final", so ncaa-api goes first in the dedupe to win for
 	// anything it also has (live state/clock included), while the tracked
 	// teams still show up if ncaa-api is down or missing a game.
-	async fetchNcaabGames (date, collegeTeams, cfbdKey) {
-		const relevantTeams = (collegeTeams || []).filter((t) => t.sport === "basketball");
+	async fetchNcaaApiMergedGames (sport, league, date, collegeTeams, cfbdKey) {
+		const relevantTeams = (collegeTeams || []).filter((t) => t.sport === sport);
 		const [ncaaResult, trackedGames] = await Promise.all([
-			this.fetchNcaaApiBasketballGames(date, cfbdKey).then((games) => ({ games }), (error) => ({ error })),
+			this.fetchNcaaApiGames(sport, league, date, cfbdKey).then((games) => ({ games }), (error) => ({ error })),
 			Promise.all(relevantTeams.map((t) => this.fetchCollegeTeamGameForDate(t.sport, t.team, date, cfbdKey).catch(() => null)))
 		]);
 		const tracked = trackedGames.filter(Boolean);
@@ -941,18 +977,49 @@ module.exports = NodeHelper.create({
 		return this.markTrackedTeamGames(deduped, relevantTeams);
 	},
 
-	async fetchNcaaApiBasketballGames (date, cfbdKey) {
-		const path = `${date.slice(0, 4)}/${date.slice(4, 6)}/${date.slice(6, 8)}`;
-		const response = await fetch(`${NCAA_API_BASE}/scoreboard/basketball-men/d1/${path}/all-conf`);
-		if (!response.ok) {
-			throw new Error(`ncaa-api HTTP ${response.status}`);
+	// Basketball is requested by day. Football can only be requested by
+	// week-long batch (Tuesday-Monday windows, week 1 starting the Tuesday
+	// before Labor Day weekend's Monday), so the batch containing the
+	// requested day is fetched and then narrowed back down to just that day
+	// using each game's own start time. Before week 2 the API's week 0 and 1
+	// overlap, so both are fetched there.
+	async fetchNcaaApiGames (sport, league, date, cfbdKey) {
+		const year = Number(date.slice(0, 4));
+		let urls;
+		if (sport === "football") {
+			const laborDay = new Date(year, 8, 1);
+			while (laborDay.getDay() !== 1) {
+				laborDay.setDate(laborDay.getDate() + 1);
+			}
+			const week1Start = new Date(year, 8, laborDay.getDate() - 6);
+			const day = new Date(year, Number(date.slice(4, 6)) - 1, Number(date.slice(6, 8)));
+			const week = Math.floor((day - week1Start) / (7 * 24 * 60 * 60 * 1000)) + 1;
+			const weeks = week < 2 ? [0, 1] : [week];
+			urls = weeks.map((w) => `${NCAA_API_BASE}/scoreboard/football/fbs/${year}/${String(w).padStart(2, "0")}/all-conf`);
+		} else {
+			urls = [`${NCAA_API_BASE}/scoreboard/basketball-men/d1/${year}/${date.slice(4, 6)}/${date.slice(6, 8)}/all-conf`];
 		}
-		const data = await response.json();
-		const teamsLookup = cfbdKey ? await this.fetchCfbdTeamsLookup("mens-college-basketball", cfbdKey).catch(() => null) : null;
-		return Promise.all((data.games || []).map((g) => this.parseNcaaApiGame(g.game, teamsLookup)));
+
+		const responses = await Promise.all(urls.map(async (url) => {
+			const response = await fetch(url);
+			if (!response.ok) {
+				throw new Error(`ncaa-api HTTP ${response.status}`);
+			}
+			return response.json();
+		}));
+		const teamsLookup = cfbdKey ? await this.fetchCfbdTeamsLookup(league, cfbdKey).catch(() => null) : null;
+		const rawGames = new Map();
+		for (const data of responses) {
+			for (const g of data.games || []) {
+				rawGames.set(g.game.gameID, g.game);
+			}
+		}
+		const games = await Promise.all([...rawGames.values()].map((g) => this.parseNcaaApiGame(g, sport, league, teamsLookup)));
+		const target = toIsoDate(date);
+		return games.filter((g) => g.eventDate && toLocalDateString(g.eventDate) === target);
 	},
 
-	async parseNcaaApiGame (game, teamsLookup) {
+	async parseNcaaApiGame (game, sport, league, teamsLookup) {
 		const state = game.gameState === "final" ? "post" : game.gameState === "live" ? "in" : "pre";
 		const side = async (team) => {
 			const shortName = team.names?.short || "TBD";
@@ -977,9 +1044,9 @@ module.exports = NodeHelper.create({
 
 		return {
 			id: String(game.gameID || ""),
-			sport: "basketball",
-			league: "mens-college-basketball",
-			url: game.url ? `https://www.ncaa.com${game.url}` : "https://www.ncaa.com/scoreboard/basketball-men/d1",
+			sport,
+			league,
+			url: game.url ? `https://www.ncaa.com${game.url}` : "https://www.ncaa.com/scoreboard",
 			homeRank: home.rank || 99,
 			awayRank: away.rank || 99,
 			homeTeam: home,

@@ -180,6 +180,13 @@ Module.register("MMM-SportsScores", {
 			return g;
 		});
 
+		if (["college-football", "mens-college-basketball"].includes(this.config.sports[this.activeSportIndex].league)) {
+			for (const g of games) {
+				g.isUpset = this._gameTier(g) === 0;
+			}
+			games.sort((a, b) => this._gameTier(a) - this._gameTier(b));
+		}
+
 		return {
 			error: this.error,
 			dateLabel: targetDate.format("ddd, MMM D"),
@@ -733,11 +740,25 @@ Module.register("MMM-SportsScores", {
 		this._standingsOnlyUpdate = false;
 	},
 
+	// 0: a ranked team lost, 1: any other game with a ranked team, 2: the rest.
+	_gameTier (game) {
+		const homeRanked = !!game.homeTeam.rank;
+		const awayRanked = !!game.awayTeam.rank;
+		if (!homeRanked && !awayRanked) return 2;
+		if (game.state === "post") {
+			const hs = parseInt(game.homeTeam.score) || 0;
+			const as = parseInt(game.awayTeam.score) || 0;
+			if ((homeRanked && hs < as) || (awayRanked && as < hs)) return 0;
+		}
+		return 1;
+	},
+
 	_canPatch (oldGames, newGames) {
 		if (!oldGames || oldGames.length === 0) return false;
 		if (oldGames.length !== newGames.length) return false;
 		for (let i = 0; i < oldGames.length; i++) {
 			if (oldGames[i].id !== newGames[i].id) return false;
+			if (this._gameTier(oldGames[i]) !== this._gameTier(newGames[i])) return false;
 			if (!this._situationEqual(oldGames[i].situation, newGames[i].situation)) return false;
 		}
 		return true;
