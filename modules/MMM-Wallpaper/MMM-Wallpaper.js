@@ -241,6 +241,8 @@ Module.register("MMM-Wallpaper", {
 		overlay.appendChild(panel);
 		document.body.appendChild(overlay);
 		this.overlayEl = overlay;
+		this.logEl.scrollTop = this.logEl.scrollHeight;
+		this.serverLogEl.scrollTop = this.serverLogEl.scrollHeight;
 
 		requestAnimationFrame(() => overlay.classList.add("visible"));
 	},
