@@ -184,15 +184,23 @@ Module.register("MMM-Wallpaper", {
 		this.logEl.className = "wallpaper-log";
 		panel.appendChild(this.logEl);
 
-		const restart = document.createElement("button");
-		restart.className = "wallpaper-restart-button";
-		restart.textContent = "Restart MagicMirror";
-		restart.addEventListener("click", () => {
-			restart.textContent = "Restarting...";
-			restart.disabled = true;
-			this.sendSocketNotification("RESTART_APP");
+		const buttons = document.createElement("div");
+		buttons.className = "wallpaper-restart-buttons";
+		[
+			["Restart MagicMirror", "RESTART_APP"],
+			["Restart Wordbot", "RESTART_WORDBOT"]
+		].forEach(([label, notification]) => {
+			const button = document.createElement("button");
+			button.className = "wallpaper-restart-button";
+			button.textContent = label;
+			button.addEventListener("click", () => {
+				button.textContent = "Restarting...";
+				button.disabled = true;
+				this.sendSocketNotification(notification);
+			});
+			buttons.appendChild(button);
 		});
-		panel.appendChild(restart);
+		panel.appendChild(buttons);
 		this.logs.forEach((entry) => this.appendLogLine(entry));
 		this.logEl.scrollTop = this.logEl.scrollHeight;
 

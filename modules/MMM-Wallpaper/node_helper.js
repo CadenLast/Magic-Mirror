@@ -1,6 +1,12 @@
 const NodeHelper = require("node_helper");
 const fs = require("fs");
 const path = require("path");
+const { spawn } = require("child_process");
+
+const SERVICES = {
+	RESTART_APP: "magicmirror",
+	RESTART_WORDBOT: "wordbot"
+};
 
 module.exports = NodeHelper.create({
 	socketNotificationReceived (notification, payload) {
@@ -14,8 +20,11 @@ module.exports = NodeHelper.create({
 			} catch {
 				this.sendSocketNotification("WALLPAPERS", []);
 			}
-		} else if (notification === "RESTART_APP") {
-			process.exit(1);
+		} else if (SERVICES[notification]) {
+			spawn("sudo", ["-n", "systemctl", "restart", SERVICES[notification]], {
+				detached: true,
+				stdio: "ignore"
+			}).unref();
 		}
 	}
 });

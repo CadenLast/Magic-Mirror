@@ -108,9 +108,14 @@
   color: #ff6b6b;
 }
 
+.wallpaper-restart-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
 .wallpaper-restart-button {
-  display: block;
-  margin: 16px auto 0;
   padding: 10px 24px;
   font-size: 1rem;
   color: #fff;
