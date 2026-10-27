@@ -63,7 +63,7 @@ module.exports = NodeHelper.create({
 				if (!ssid) {
 					return;
 				}
-				const entry = { ssid, signal: Number(signal) || 0, active: inUse === "*", saved: saved.includes(ssid) };
+				const entry = { ssid, signal: Number(signal) || 0, active: inUse === "*" || inUse === "yes", saved: saved.includes(ssid) };
 				const prev = seen.get(ssid);
 				if (!prev || entry.active || (!prev.active && entry.signal > prev.signal)) {
 					seen.set(ssid, entry);
@@ -101,6 +101,12 @@ module.exports = NodeHelper.create({
 			} catch {
 				this.sendSocketNotification("WALLPAPERS", []);
 			}
+		} else if (notification === "GET_SERVER_LOG") {
+			this.sendSocketNotification("SERVER_LOG", { lines: this.serverLines, reset: true });
+		} else if (notification === "GET_WIFI") {
+			this.sendWifiStatus();
+		} else if (notification === "SET_WIFI") {
+			this.connectWifi(payload);
 		} else if (SERVICES[notification]) {
 			const restart = `sudo -n systemctl restart ${SERVICES[notification]}`;
 			const command = notification === "RESTART_APP" ? `git pull --ff-only; ${restart}` : restart;
