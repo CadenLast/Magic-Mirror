@@ -1,5 +1,6 @@
 const NodeHelper = require("node_helper");
 const fs = require("fs");
+const readline = require("readline");
 const path = require("path");
 const { spawn, execFile } = require("child_process");
 
@@ -25,12 +26,38 @@ const savedWifi = async () => (await nmcli(["-f", "NAME,TYPE", "connection", "sh
 	.map(([name]) => name);
 
 module.exports = NodeHelper.create({
+	start () {
+		this.serverLines = [];
+		this.followJournal();
+	},
+
+	pushServerLine (line) {
+		this.serverLines.push(line);
+		if (this.serverLines.length > 500) {
+			this.serverLines.shift();
+		}
+		this.sendSocketNotification("SERVER_LOG", { lines: [line] });
+	},
+
+	followJournal () {
+		const proc = spawn("journalctl", ["-f", "-n", "200", "-o", "short", "--no-pager", "-u", "magicmirror", "-u", "wordbot"]);
+		readline.createInterface({ input: proc.stdout }).on("line", (line) => this.pushServerLine(line));
+		readline.createInterface({ input: proc.stderr }).on("line", (line) => this.pushServerLine(`[journalctl] ${line}`));
+		proc.on("error", (err) => this.pushServerLine(`[journalctl] ${err.message}`));
+		proc.on("close", (code) => {
+			if (code !== null) {
+				setTimeout(() => this.followJournal(), 10000);
+			}
+		});
+	},
+
 	async sendWifiStatus () {
 		try {
-			const [saved, scan] = await Promise.all([
-				savedWifi(),
-				nmcli(["-f", "IN-USE,SSID,SIGNAL", "dev", "wifi", "list", "--rescan", "no"])
+			const [savedResult, scan] = await Promise.all([
+				savedWifi().catch(() => []),
+				nmcli(["-f", "IN-USE,SSID,SIGNAL", "dev", "wifi"])
 			]);
+			const saved = savedResult;
 			const seen = new Map();
 			scan.forEach(([inUse, ssid, signal]) => {
 				if (!ssid) {

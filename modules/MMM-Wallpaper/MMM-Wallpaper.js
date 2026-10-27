@@ -95,6 +95,10 @@ Module.register("MMM-Wallpaper", {
 	},
 
 	socketNotificationReceived (notification, payload) {
+		if (notification === "SERVER_LOG") {
+			this.addServerLines(payload);
+			return;
+		}
 		if (notification === "WIFI_STATUS") {
 			this.renderWifi(payload);
 			return;
@@ -189,6 +193,11 @@ Module.register("MMM-Wallpaper", {
 		this.wifiEl.textContent = "Scanning...";
 		panel.appendChild(this.wifiEl);
 		this.sendSocketNotification("GET_WIFI");
+		setTimeout(() => {
+			if (this.wifiEl && this.wifiEl.textContent === "Scanning...") {
+				this.wifiEl.textContent = "No response from server. Restart MagicMirror to load the latest code.";
+			}
+		}, 10000);
 
 		const logTitle = document.createElement("div");
 		logTitle.className = "wallpaper-picker-title wallpaper-log-title";
@@ -198,6 +207,16 @@ Module.register("MMM-Wallpaper", {
 		this.logEl = document.createElement("div");
 		this.logEl.className = "wallpaper-log";
 		panel.appendChild(this.logEl);
+
+		const serverTitle = document.createElement("div");
+		serverTitle.className = "wallpaper-picker-title wallpaper-log-title";
+		serverTitle.textContent = "Server Logs";
+		panel.appendChild(serverTitle);
+
+		this.serverLogEl = document.createElement("div");
+		this.serverLogEl.className = "wallpaper-log";
+		panel.appendChild(this.serverLogEl);
+		this.sendSocketNotification("GET_SERVER_LOG");
 
 		const buttons = document.createElement("div");
 		buttons.className = "wallpaper-restart-buttons";
@@ -224,6 +243,35 @@ Module.register("MMM-Wallpaper", {
 		this.overlayEl = overlay;
 
 		requestAnimationFrame(() => overlay.classList.add("visible"));
+	},
+
+	addServerLines ({ lines, reset }) {
+		const el = this.serverLogEl;
+		if (!el) {
+			return;
+		}
+		if (reset) {
+			el.textContent = "";
+		}
+		const atBottom = reset || el.scrollTop + el.clientHeight >= el.scrollHeight - 5;
+		lines.forEach((line) => {
+			const row = document.createElement("div");
+			let level = "info";
+			if (/error|fail|exception|ECONN|ETIMEDOUT/i.test(line)) {
+				level = "error";
+			} else if (/warn|rate.?limit|429/i.test(line)) {
+				level = "warn";
+			}
+			row.className = `wallpaper-log-line ${level}`;
+			row.textContent = line;
+			el.appendChild(row);
+		});
+		while (el.childElementCount > 500) {
+			el.firstChild.remove();
+		}
+		if (atBottom) {
+			el.scrollTop = el.scrollHeight;
+		}
 	},
 
 	renderWifi ({ networks, error }) {
@@ -266,6 +314,7 @@ Module.register("MMM-Wallpaper", {
 	hidePicker () {
 		this.pickerVisible = false;
 		this.wifiEl = null;
+		this.serverLogEl = null;
 		if (this.overlayEl) {
 			this.overlayEl.classList.remove("visible");
 			this.logEl = null;
