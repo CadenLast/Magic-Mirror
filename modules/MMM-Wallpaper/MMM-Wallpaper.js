@@ -95,6 +95,10 @@ Module.register("MMM-Wallpaper", {
 	},
 
 	socketNotificationReceived (notification, payload) {
+		if (notification === "WIFI_STATUS") {
+			this.renderWifi(payload);
+			return;
+		}
 		if (notification === "WALLPAPERS" && payload.length) {
 			this.wallpapers = payload;
 			this.pickRandom();
@@ -175,6 +179,17 @@ Module.register("MMM-Wallpaper", {
 
 		panel.appendChild(grid);
 
+		const wifiTitle = document.createElement("div");
+		wifiTitle.className = "wallpaper-picker-title wallpaper-log-title";
+		wifiTitle.textContent = "WiFi";
+		panel.appendChild(wifiTitle);
+
+		this.wifiEl = document.createElement("div");
+		this.wifiEl.className = "wallpaper-wifi";
+		this.wifiEl.textContent = "Scanning...";
+		panel.appendChild(this.wifiEl);
+		this.sendSocketNotification("GET_WIFI");
+
 		const logTitle = document.createElement("div");
 		logTitle.className = "wallpaper-picker-title wallpaper-log-title";
 		logTitle.textContent = "Console";
@@ -211,8 +226,46 @@ Module.register("MMM-Wallpaper", {
 		requestAnimationFrame(() => overlay.classList.add("visible"));
 	},
 
+	renderWifi ({ networks, error }) {
+		if (!this.wifiEl) {
+			return;
+		}
+		this.wifiEl.textContent = "";
+		if (error) {
+			this.wifiEl.textContent = `WiFi unavailable: ${error}`;
+			return;
+		}
+		if (!networks.length) {
+			this.wifiEl.textContent = "No networks found";
+			return;
+		}
+		networks.forEach((net) => {
+			const row = document.createElement("div");
+			row.className = "wallpaper-wifi-row";
+			if (net.active) {
+				row.classList.add("active");
+			}
+			if (net.saved && !net.active) {
+				row.classList.add("saved");
+				row.addEventListener("click", () => {
+					this.wifiEl.textContent = `Connecting to ${net.ssid}...`;
+					this.sendSocketNotification("SET_WIFI", net.ssid);
+					setTimeout(() => this.sendSocketNotification("GET_WIFI"), 8000);
+				});
+			}
+			const name = document.createElement("span");
+			name.textContent = net.active ? `${net.ssid} (connected)` : net.ssid;
+			const signal = document.createElement("span");
+			signal.textContent = `${net.signal}%`;
+			row.appendChild(name);
+			row.appendChild(signal);
+			this.wifiEl.appendChild(row);
+		});
+	},
+
 	hidePicker () {
 		this.pickerVisible = false;
+		this.wifiEl = null;
 		if (this.overlayEl) {
 			this.overlayEl.classList.remove("visible");
 			this.logEl = null;

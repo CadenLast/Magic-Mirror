@@ -1,14 +1,68 @@
 const NodeHelper = require("node_helper");
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, execFile } = require("child_process");
 
 const SERVICES = {
 	RESTART_APP: "magicmirror",
 	RESTART_WORDBOT: "wordbot"
 };
 
+const splitNmcli = (line) => line.split(/(?<!\\):/).map((f) => f.replace(/\\:/g, ":").replace(/\\\\/g, "\\"));
+
+const nmcli = (args) => new Promise((resolve, reject) => {
+	execFile("nmcli", ["-t", ...args], { timeout: 10000 }, (err, stdout) => {
+		if (err) {
+			reject(err);
+		} else {
+			resolve(stdout.split("\n").filter(Boolean).map(splitNmcli));
+		}
+	});
+});
+
+const savedWifi = async () => (await nmcli(["-f", "NAME,TYPE", "connection", "show"]))
+	.filter(([, type]) => type === "802-11-wireless")
+	.map(([name]) => name);
+
 module.exports = NodeHelper.create({
+	async sendWifiStatus () {
+		try {
+			const [saved, scan] = await Promise.all([
+				savedWifi(),
+				nmcli(["-f", "IN-USE,SSID,SIGNAL", "dev", "wifi", "list", "--rescan", "no"])
+			]);
+			const seen = new Map();
+			scan.forEach(([inUse, ssid, signal]) => {
+				if (!ssid) {
+					return;
+				}
+				const entry = { ssid, signal: Number(signal) || 0, active: inUse === "*", saved: saved.includes(ssid) };
+				const prev = seen.get(ssid);
+				if (!prev || entry.active || (!prev.active && entry.signal > prev.signal)) {
+					seen.set(ssid, entry);
+				}
+			});
+			const networks = [...seen.values()].sort((a, b) => b.active - a.active || b.signal - a.signal);
+			this.sendSocketNotification("WIFI_STATUS", { networks });
+		} catch (err) {
+			this.sendSocketNotification("WIFI_STATUS", { error: err.message });
+		}
+	},
+
+	async connectWifi (ssid) {
+		try {
+			if (!(await savedWifi()).includes(ssid)) {
+				throw new Error("Network is not saved on this device");
+			}
+			spawn("sudo", ["-n", "nmcli", "connection", "up", "id", ssid], {
+				detached: true,
+				stdio: "ignore"
+			}).unref();
+		} catch (err) {
+			this.sendSocketNotification("WIFI_STATUS", { error: err.message });
+		}
+	},
+
 	socketNotificationReceived (notification, payload) {
 		if (notification === "GET_WALLPAPERS") {
 			const dir = path.resolve(__dirname, "../../config/darkwallpapers");
