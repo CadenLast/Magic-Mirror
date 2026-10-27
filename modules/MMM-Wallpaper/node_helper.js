@@ -102,7 +102,10 @@ module.exports = NodeHelper.create({
 				this.sendSocketNotification("WALLPAPERS", []);
 			}
 		} else if (SERVICES[notification]) {
-			spawn("sudo", ["-n", "systemctl", "restart", SERVICES[notification]], {
+			const restart = `sudo -n systemctl restart ${SERVICES[notification]}`;
+			const command = notification === "RESTART_APP" ? `git pull --ff-only; ${restart}` : restart;
+			spawn("sh", ["-c", command], {
+				cwd: path.resolve(__dirname, "../.."),
 				detached: true,
 				stdio: "ignore"
 			}).unref();
