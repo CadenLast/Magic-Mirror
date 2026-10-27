@@ -193,6 +193,11 @@ Module.register("MMM-Wallpaper", {
 		this.wifiEl.textContent = "Scanning...";
 		panel.appendChild(this.wifiEl);
 		this.sendSocketNotification("GET_WIFI");
+		setTimeout(() => {
+			if (this.wifiEl && this.wifiEl.textContent === "Scanning...") {
+				this.wifiEl.textContent = "No response from server. Restart MagicMirror to load the latest code.";
+			}
+		}, 10000);
 
 		const logTitle = document.createElement("div");
 		logTitle.className = "wallpaper-picker-title wallpaper-log-title";

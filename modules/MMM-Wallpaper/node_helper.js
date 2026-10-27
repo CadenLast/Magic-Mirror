@@ -53,10 +53,11 @@ module.exports = NodeHelper.create({
 
 	async sendWifiStatus () {
 		try {
-			const [saved, scan] = await Promise.all([
-				savedWifi(),
-				nmcli(["-f", "IN-USE,SSID,SIGNAL", "dev", "wifi", "list", "--rescan", "no"])
+			const [savedResult, scan] = await Promise.all([
+				savedWifi().catch(() => []),
+				nmcli(["-f", "IN-USE,SSID,SIGNAL", "dev", "wifi"])
 			]);
+			const saved = savedResult;
 			const seen = new Map();
 			scan.forEach(([inUse, ssid, signal]) => {
 				if (!ssid) {
