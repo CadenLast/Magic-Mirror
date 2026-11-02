@@ -129,7 +129,7 @@ const COLLEGE_TEAM_LIVE_TTL_MS = 60 * 1000;
 // The NCAA's scoreboard data via henrygd/ncaa-api's public instance (limited
 // to 3 requests/second per IP, no monthly quota - unlike the CFBD/CBBD free
 // tier's shared 1,000 calls/month).
-const NCAA_API_BASE = "https://ncaa-api.henrygd.me";
+const NCAA_API_PUBLIC_BASE = "https://ncaa-api.henrygd.me";
 
 // balldontlie doesn't include team logos, but ESPN's static logo CDN is just
 // image assets (not an API endpoint), so it isn't affected by the reliability
@@ -181,6 +181,9 @@ module.exports = NodeHelper.create({
 	},
 
 	socketNotificationReceived (notification, payload) {
+		if (payload && payload.ncaaApiUrl) {
+			this.ncaaApiBase = payload.ncaaApiUrl.replace(/\/+$/, "");
+		}
 		if (notification === "FETCH_SCORES") {
 			this.fetchScores(payload);
 		} else if (notification === "FETCH_FAVORITES") {
@@ -995,9 +998,9 @@ module.exports = NodeHelper.create({
 			const day = new Date(year, Number(date.slice(4, 6)) - 1, Number(date.slice(6, 8)));
 			const week = Math.floor((day - week1Start) / (7 * 24 * 60 * 60 * 1000)) + 1;
 			const weeks = week < 2 ? [0, 1] : [week];
-			urls = weeks.map((w) => `${NCAA_API_BASE}/scoreboard/football/fbs/${year}/${String(w).padStart(2, "0")}/all-conf`);
+			urls = weeks.map((w) => `${this.ncaaApiBase || NCAA_API_PUBLIC_BASE}/scoreboard/football/fbs/${year}/${String(w).padStart(2, "0")}/all-conf`);
 		} else {
-			urls = [`${NCAA_API_BASE}/scoreboard/basketball-men/d1/${year}/${date.slice(4, 6)}/${date.slice(6, 8)}/all-conf`];
+			urls = [`${this.ncaaApiBase || NCAA_API_PUBLIC_BASE}/scoreboard/basketball-men/d1/${year}/${date.slice(4, 6)}/${date.slice(6, 8)}/all-conf`];
 		}
 
 		const responses = await Promise.all(urls.map(async (url) => {
