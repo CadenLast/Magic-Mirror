@@ -169,7 +169,8 @@ let config = {
 					{ sport: "basketball", team: "Drake" }
 				],
 				balldontlieKeys: keys.balldontlie,
-				cfbdKey: keys.cfbd
+				cfbdKey: keys.cfbd,
+				ncaaApiUrl: keys.ncaaApiUrl
 			}
 		},
 		{

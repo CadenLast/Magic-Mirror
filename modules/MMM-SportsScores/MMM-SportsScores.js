@@ -634,6 +634,7 @@ Module.register("MMM-SportsScores", {
 		const targetDate = moment().add(this.dayOffset, "days").format("YYYYMMDD");
 		this.requestId = `${this.activeSportIndex}-${this.dayOffset}-${Date.now()}`;
 		this.sendSocketNotification("FETCH_SCORES", {
+			ncaaApiUrl: this.config.ncaaApiUrl,
 			sport: sport.sport,
 			league: sport.league,
 			date: targetDate,
@@ -651,6 +652,7 @@ Module.register("MMM-SportsScores", {
 		const targetDate = moment().add(this.dayOffset, "days").format("YYYYMMDD");
 		this.favoritesRequestId = `fav-${this.dayOffset}-${Date.now()}`;
 		this.sendSocketNotification("FETCH_FAVORITES", {
+			ncaaApiUrl: this.config.ncaaApiUrl,
 			date: targetDate,
 			favorites: this.config.favoriteTeams || [],
 			collegeTeams: this.config.collegeTeams || [],
