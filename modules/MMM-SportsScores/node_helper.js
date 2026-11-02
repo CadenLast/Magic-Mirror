@@ -149,6 +149,51 @@ const COLLEGE_TEAM_LOGO_OVERRIDES = {
 	"mens-college-basketball": { Iowa: "https://a.espncdn.com/i/teamlogos/ncaa/500-dark/2294.png" }
 };
 
+// ncaa-api's short team names don't always match CFBD/CBBD's school names:
+// some are abbreviations of a word ("Fla. Atlantic"), and a few are just
+// different names entirely.
+const NCAA_API_TEAM_ALIASES = {
+	"Army West Point": "Army",
+	NIU: "Northern Illinois",
+	ULM: "UL Monroe",
+	"Miami-Middletown": "Miami (OH)-Middletown",
+	"St. Thomas (MN)": "St. Thomas-Minnesota",
+	"Cal Baptist": "California Baptist"
+};
+const NCAA_API_NAME_WORDS = {
+	"Mich.": "Michigan",
+	"Fla.": "Florida",
+	"Caro.": "Carolina",
+	"Ky.": "Kentucky",
+	"Tenn.": "Tennessee",
+	"Ill.": "Illinois",
+	"Ala.": "Alabama",
+	"Mass.": "Massachusetts",
+	"Conn.": "Connecticut",
+	"Ark.": "Arkansas",
+	"Wash.": "Washington",
+	"Okla.": "Oklahoma",
+	"Ore.": "Oregon",
+	"Va.": "Virginia",
+	"Pa.": "Pennsylvania",
+	"So.": "Southern",
+	"No.": "Northern",
+	"Miss.": "Mississippi",
+	"Ga.": "Georgia",
+	"Tex.": "Texas",
+	"Cal.": "California",
+	"Colo.": "Colorado",
+	"Wis.": "Wisconsin",
+	"Minn.": "Minnesota",
+	"Ind.": "Indiana",
+	"Neb.": "Nebraska",
+	"Dak.": "Dakota",
+	"Ft.": "Fort",
+	"Mt.": "Mount"
+};
+
+const normalizeTeamName = (name) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/&/g, "and").replace(/[^a-z0-9]+/g, " ").trim();
+
 const toIsoDate = (yyyymmdd) => `${yyyymmdd.slice(0, 4)}-${yyyymmdd.slice(4, 6)}-${yyyymmdd.slice(6, 8)}`;
 
 // A game's UTC timestamp often falls on a different calendar date than the
@@ -1065,11 +1110,54 @@ module.exports = NodeHelper.create({
 		return games.filter((g) => g.eventDate && toLocalDateString(g.eventDate) === target);
 	},
 
+	// Tries the name as-is first, then the aliases/expansions above, then a
+	// spelling-tolerant (accents, punctuation, case) match as a last resort.
+	findCollegeTeam (lookup, name) {
+		if (!lookup) {
+			return null;
+		}
+		const expanded = name.replace(/\b[A-Za-z]+\./g, (word) => NCAA_API_NAME_WORDS[word] || word);
+		const candidates = [...new Set([
+			name,
+			NCAA_API_TEAM_ALIASES[name],
+			name.replace(/\.$/, ""),
+			name.replace(/\bSt\.?$/, "State"),
+			expanded,
+			expanded.replace(/\bSt\.?$/, "State"),
+			name.replace(/\s*\((?:FL|NY|PA|CA|MA)\)$/, "")
+		].filter(Boolean))];
+		for (const candidate of candidates) {
+			if (lookup.has(candidate)) {
+				return lookup.get(candidate);
+			}
+		}
+
+		this.teamLookupIndexes = this.teamLookupIndexes || new WeakMap();
+		let index = this.teamLookupIndexes.get(lookup);
+		if (!index) {
+			index = new Map([...lookup].map(([key, entry]) => [normalizeTeamName(key), entry]));
+			this.teamLookupIndexes.set(lookup, index);
+		}
+		for (const candidate of candidates) {
+			const match = index.get(normalizeTeamName(candidate));
+			if (match) {
+				return match;
+			}
+		}
+
+		this.unmatchedTeams = this.unmatchedTeams || new Set();
+		if (!this.unmatchedTeams.has(name)) {
+			this.unmatchedTeams.add(name);
+			Log.warn(`${this.name}: No logo/abbreviation match for team "${name}"`);
+		}
+		return null;
+	},
+
 	async parseNcaaApiGame (game, sport, league, teamsLookup) {
 		const state = game.gameState === "final" ? "post" : game.gameState === "live" ? "in" : "pre";
 		const side = async (team) => {
 			const shortName = team.names?.short || "TBD";
-			const match = teamsLookup && (teamsLookup.get(shortName) || teamsLookup.get(shortName.replace(/\.$/, "")) || teamsLookup.get(shortName.replace(/\bSt\.?$/, "State")));
+			const match = this.findCollegeTeam(teamsLookup, shortName);
 			const logoUrl = match?.logo || "";
 			return {
 				name: match?.school || shortName.replace(/\bSt\.$/, "State"),
