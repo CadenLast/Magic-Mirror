@@ -10,6 +10,7 @@ const Log = require("logger");
 // committed to git (see .gitignore) since these are downloaded binary
 // assets, not source.
 const CACHE_DIR = path.join(__dirname, "cache");
+const MAX_CONCURRENT_LOGO_DOWNLOADS = 4;
 const LOGO_CACHE_DIR = path.join(CACHE_DIR, "logos");
 
 // The frontend's UI selections (active sport tab, standings view) live only
@@ -263,8 +264,32 @@ module.exports = NodeHelper.create({
 			return publicUrl;
 		}
 
+		// A logo that 404s (e.g. a small school with no image on the CDN) will
+		// keep 404ing, and returning its URL would just render a broken image.
+		this.missingLogos = this.missingLogos || new Set();
+		if (this.missingLogos.has(url)) {
+			return "";
+		}
+
+		// The first run after an empty cache would otherwise open one connection
+		// per team on the day's slate at once, which is enough to make the Pi's
+		// other requests fail too - cap it and share a download between callers.
+		this.logoDownloads = this.logoDownloads || new Map();
+		if (!this.logoDownloads.has(url)) {
+			const download = this.limitLogoDownloads(() => this.downloadLogo(url, filePath, publicUrl))
+				.finally(() => this.logoDownloads.delete(url));
+			this.logoDownloads.set(url, download);
+		}
+		return this.logoDownloads.get(url);
+	},
+
+	async downloadLogo (url, filePath, publicUrl) {
 		try {
 			const response = await fetch(url);
+			if (response.status === 404) {
+				this.missingLogos.add(url);
+				return "";
+			}
 			if (!response.ok) {
 				throw new Error(`HTTP ${response.status}`);
 			}
@@ -274,6 +299,24 @@ module.exports = NodeHelper.create({
 		} catch (error) {
 			Log.warn(`${this.name}: Failed to cache logo ${url}: ${error.message}`);
 			return url;
+		}
+	},
+
+	async limitLogoDownloads (task) {
+		this.activeLogoDownloads = this.activeLogoDownloads || 0;
+		this.logoDownloadQueue = this.logoDownloadQueue || [];
+		if (this.activeLogoDownloads >= MAX_CONCURRENT_LOGO_DOWNLOADS) {
+			await new Promise((resolve) => this.logoDownloadQueue.push(resolve));
+		}
+		this.activeLogoDownloads++;
+		try {
+			return await task();
+		} finally {
+			this.activeLogoDownloads--;
+			const next = this.logoDownloadQueue.shift();
+			if (next) {
+				next();
+			}
 		}
 	},
 
