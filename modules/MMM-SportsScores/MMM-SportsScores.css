@@ -560,12 +560,22 @@
 }
 
 .scores-rank {
+  display: inline-block;
+  min-width: 1.6em;
+  margin-right: 4px;
   font-size: 0.75em;
+  text-align: right;
   opacity: 0.6;
 }
 
+/* Every row in a list with ranked teams reserves the same rank slot, so the
+   name box grows by exactly that much and the scores stay in one column. */
+.scores-team-row .scores-abbr:has(.scores-rank) {
+  flex-basis: calc(6ch + 1.5em + 4px);
+}
+
 .scores-score {
-  min-width: 22px;
+  min-width: 3ch;
   text-align: right;
   font-variant-numeric: tabular-nums;
 }

@@ -147,7 +147,7 @@ Module.register("MMM-SportsScores", {
 				const fmt = config.timeFormat === 24 ? "HH:mm" : "h:mm A";
 				g.displayTime = moment(g.eventDate).format(fmt);
 			} else {
-				g.displayTime = g.detail;
+				g.displayTime = this._abbreviateDetail(g.detail);
 			}
 
 			return g;
@@ -174,7 +174,7 @@ Module.register("MMM-SportsScores", {
 				const fmt = config.timeFormat === 24 ? "HH:mm" : "h:mm A";
 				g.displayTime = moment(g.eventDate).format(fmt);
 			} else {
-				g.displayTime = g.detail;
+				g.displayTime = this._abbreviateDetail(g.detail);
 			}
 
 			return g;
@@ -187,8 +187,11 @@ Module.register("MMM-SportsScores", {
 			games.sort((a, b) => this._gameTier(a) - this._gameTier(b));
 		}
 
+		const hasRanks = [...favorites, ...games].some((g) => g.homeTeam.rank || g.awayTeam.rank);
+
 		return {
 			error: this.error,
+			hasRanks: hasRanks,
 			dateLabel: targetDate.format("ddd, MMM D"),
 			isToday: this.dayOffset === 0,
 			sports: this.config.sports,
@@ -742,6 +745,18 @@ Module.register("MMM-SportsScores", {
 		this._standingsOnlyUpdate = false;
 	},
 
+	_abbreviateDetail (text) {
+		return (text || "")
+			.replace(/^half\s?time.*$/i, "HT")
+			.replace(/(\d)(?:st|nd|rd|th)\s+(?:quarter|qtr)\b/i, "Q$1")
+			.replace(/\bend of\b/i, "End")
+			.replace(/\bovertime\b/i, "OT")
+			.replace(/\bpostponed\b/i, "PPD")
+			.replace(/\bsuspended\b/i, "Susp")
+			.replace(/\bdelayed\b/i, "Delay")
+			.replace(/\bin progress\b/i, "Live");
+	},
+
 	// 0: a ranked team lost, 1: any other game with a ranked team, 2: the rest.
 	_gameTier (game) {
 		const homeRanked = !!game.homeTeam.rank;
@@ -788,7 +803,7 @@ Module.register("MMM-SportsScores", {
 			const fmt = config.timeFormat === 24 ? "HH:mm" : "h:mm A";
 			g.displayTime = moment(g.eventDate).format(fmt);
 		} else {
-			g.displayTime = g.detail;
+			g.displayTime = this._abbreviateDetail(g.detail);
 		}
 		return g;
 	},
