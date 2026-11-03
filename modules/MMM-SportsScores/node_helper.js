@@ -158,7 +158,21 @@ const NCAA_API_TEAM_ALIASES = {
 	ULM: "UL Monroe",
 	"Miami-Middletown": "Miami (OH)-Middletown",
 	"St. Thomas (MN)": "St. Thomas-Minnesota",
-	"Cal Baptist": "California Baptist"
+	"Cal Baptist": "California Baptist",
+	"Southern California": "USC",
+	"USC Upstate": "South Carolina Upstate",
+	"Queens (NC)": "Queens University",
+	"Central Conn. St.": "Central Connecticut",
+	"Southeast Mo. St.": "Southeast Missouri State",
+	"N.C. Central": "North Carolina Central",
+	"Col. of Charleston": "Charleston",
+	"Southern U.": "Southern",
+	"A&M-Corpus Christi": "Texas A&M-Corpus Christi",
+	"Alcorn": "Alcorn State",
+	"Lamar University": "Lamar",
+	UTRGV: "UT Rio Grande Valley",
+	"St. Joseph's (L.I.)": "Saint Joseph's Long Island",
+	"Wayne St. (MI)": "Wayne State (MI)"
 };
 const NCAA_API_NAME_WORDS = {
 	"Mich.": "Michigan",
@@ -1133,6 +1147,7 @@ module.exports = NodeHelper.create({
 		}
 
 		this.teamLookupIndexes = this.teamLookupIndexes || new WeakMap();
+		this.teamAbbreviationIndexes = this.teamAbbreviationIndexes || new WeakMap();
 		let index = this.teamLookupIndexes.get(lookup);
 		if (!index) {
 			index = new Map([...lookup].map(([key, entry]) => [normalizeTeamName(key), entry]));
@@ -1143,6 +1158,24 @@ module.exports = NodeHelper.create({
 			if (match) {
 				return match;
 			}
+		}
+
+		// Some names are just a team's abbreviation (e.g. "FDU" for Fairleigh
+		// Dickinson). Last, since abbreviations can be shared between teams.
+		let byAbbreviation = this.teamAbbreviationIndexes.get(lookup);
+		if (!byAbbreviation) {
+			byAbbreviation = new Map();
+			for (const entry of lookup.values()) {
+				const key = normalizeTeamName(entry.abbreviation || "");
+				if (key && !byAbbreviation.has(key)) {
+					byAbbreviation.set(key, entry);
+				}
+			}
+			this.teamAbbreviationIndexes.set(lookup, byAbbreviation);
+		}
+		const byAbbr = byAbbreviation.get(normalizeTeamName(name));
+		if (byAbbr) {
+			return byAbbr;
 		}
 
 		this.unmatchedTeams = this.unmatchedTeams || new Set();
